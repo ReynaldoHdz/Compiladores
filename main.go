@@ -42,17 +42,17 @@ func (s *Stack[T]) IsStackEmpty() bool {
 }
 
 type Queue[T any] struct {
-	items *list.List
+	items *list.List // usamos un list.List para almacenar los elementos de la cola
 }
 
 // Metodo para crear una nueva cola
 func NewQueue[T any]() *Queue[T] {
-	return &Queue[T]{items: list.New()}
+	return &Queue[T]{items: list.New()} // regresamos un apuntador a una nueva cola
 }
 
 // Metodo para agregar un elemento a la cola
 func (q *Queue[T]) Add(item T) {
-	q.items.PushBack(item)
+	q.items.PushBack(item) // agregamos el elemento al final de la cola
 }
 
 // Metodo para ver si la cola esta vacia
@@ -62,7 +62,7 @@ func (q *Queue[T]) IsQueueEmpty() bool {
 
 // Metodo para sacar un elemento de la cola
 func (q *Queue[T]) Remove() (T, bool) {
-	if q.IsQueueEmpty() {
+	if q.IsQueueEmpty() { // si la cola esta vacia
 		var zero T
 		return zero, false
 	}
