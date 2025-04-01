@@ -33,7 +33,7 @@ func (s *Stack[T]) Peek() T {
 		return zero
 	}
 
-	return s.items[len(s.items)-1]
+	return s.items[len(s.items)-1] // regresamos el ultimo elemento de la pila
 }
 
 // Metodo para ver si la pila esta vacia
@@ -67,9 +67,9 @@ func (q *Queue[T]) Remove() (T, bool) {
 		return zero, false
 	}
 
-	item := q.items.Front().Value.(T)
-	q.items.Remove(q.items.Front())
-	return item, true
+	item := q.items.Front().Value.(T) // rescatamos el primer elemento de la cola
+	q.items.Remove(q.items.Front())   // lo eliminamos de la cola
+	return item, true                 // regresamos el elemento rescatado y true para indicar que se pudo hacer pop
 }
 
 // Metodo para ver el primer elemento de la cola
@@ -79,7 +79,7 @@ func (q *Queue[T]) Peek() T {
 		return zero
 	}
 
-	return q.items.Front().Value.(T)
+	return q.items.Front().Value.(T) // regresamos el primer elemento de la cola
 }
 
 func main() {
