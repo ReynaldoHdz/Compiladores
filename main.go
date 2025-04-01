@@ -84,41 +84,103 @@ func (q *Queue[T]) Peek() T {
 
 func main() {
 	// Stack
+	fmt.Println("\nPruebas de Stack")
 	s := Stack[int]{}
-	s.Push(13)                               // 13
-	fmt.Println("Ultimo numero: ", s.Peek()) // 13
-	s.Push(24)                               // 13, 24
-	s.Push(35)                               // 13, 24, 35
-	fmt.Println("Ultimo numero: ", s.Peek()) // 35
-	s.Pop()                                  // 13, 24
-	fmt.Println("Ultimo numero: ", s.Peek()) // 24
-	fmt.Println(s.Pop())
-	fmt.Println("Ultimo numero: ", s.Peek()) // 13
+
+	// Test 1: Agregar un elemento a la pila y ver el ultimo elemento
+	s.Push(13)
+	fmt.Println("Test 1 resultado: ", s.Peek()) // 13
+
+	// Test 2: Agregar dos elementos a la pila y ver el ultimo elemento
+	s.Push(24)
+	s.Push(35)
+	fmt.Println("Test 2 resultado: ", s.Peek()) // 35
+
+	// Test 3: Hacer pop de la pila y ver el ultimo elemento
 	s.Pop()
-	fmt.Println("Ultimo numero: ", s.Peek()) // 0
-	fmt.Println(s.Pop())                     // 0
+	fmt.Println("Test 3 resultado: ", s.Peek()) // 24
+
+	// Test 4: Hacer pop dos veces de la pila y ver el ultimo elemento
+	s.Pop()
+	s.Pop()
+	fmt.Println("Test 4 resultado: ", s.Peek()) // 0
+
+	// Test 5: Hacer pop de una pila vacia y ver el reultado
+	sr1, sr2 := s.Pop()
+	fmt.Println("Test 5 resultado: ", sr1, sr2) // 0 false
+
+	// Test 6: Verificar si la pila está vacía
+	s.Push(49)
+	fmt.Println("Test 6.1 resultado: ", s.IsStackEmpty()) // false
+	s.Pop()
+	fmt.Println("Test 6.2 resultado: ", s.IsStackEmpty()) // true
 
 	// Queue
+	fmt.Println("\nPruebas de Queue")
 	q := NewQueue[int]()
-	q.Add(1)                                 // 1
-	q.Add(3)                                 // 1, 3
-	fmt.Println("Primer numero: ", q.Peek()) // 1
-	q.Add(5)                                 // 1, 3, 5
-	fmt.Println("Primer numero: ", q.Peek()) // 1
-	fmt.Println(q.Remove())                  // 1	// 3, 5
-	fmt.Println("Primer numero: ", q.Peek()) // 3
+
+	// Test 1: Agregar un elemento a la cola y ver el primer elemento
+	q.Add(1)
+	fmt.Println("Test 1 resultado: ", q.Peek()) // 1
+
+	// Test 2: Agregar dos elementos a la cola y ver el primer elemento
+	q.Add(3)
+	q.Add(5)
+	fmt.Println("Test 2 resultado: ", q.Peek()) // 1
+
+	// Test 3: Eliminar primer elemento de la cola y ver el nuevo primer elemento
+	q.Remove()
+	fmt.Println("Test 3 resultado: ", q.Peek()) // 3
+
+	// Test 4: Eliminar dos elementos de la cola y ver el nuevo primer elemento
+	q.Remove()
+	q.Remove()
+	fmt.Println("Test 4 resultado: ", q.Peek()) // 0
+
+	// Test 5: Eliminar un elemento de una cola vacia y ver el resultado
+	qr1, qr2 := q.Remove()
+	fmt.Println("Test 5 resultado: ", qr1, qr2) // 0 false
+
+	// Test 6: Verificar si la cola está vacía
+	q.Add(48)
+	fmt.Println("Test 6.1 resultado: ", q.IsQueueEmpty()) // false
+	q.Remove()
+	fmt.Println("Test 6.2 resultado: ", q.IsQueueEmpty()) // true
 
 	// Map
+	fmt.Println("\nPruebas de Map")
 	m := make(map[string]int)
+
+	// Test 1: Agregar un elemento al mapa y ver el mapa
 	m["a"] = 1
+	fmt.Println("Test 1 resultado: ", m) // map[a:1]
+
+	// Test 2: Agregar dos elementos al mapa y ver el mapa
 	m["b"] = 2
 	m["c"] = 3
-	fmt.Println(m) // map[a:1 b:2 c:3]
+	fmt.Println("Test 2 resultado: ", m) // map[a:1 b:2 c:3]
+
+	// Test 3: Eliminar un elemento del mapa y ver el mapa
 	delete(m, "b")
-	fmt.Println(m)      // map[a:1 c:3]
-	fmt.Println(m["a"]) // 1
-	fmt.Println(m["b"]) // 0
-	fmt.Println(m["c"]) // 3
-	m["d"] = 4
-	fmt.Println(m) // map[a:1 c:3 d:4]
+	fmt.Println("Test 3 resultado: ", m) // map[a:1 c:3]
+
+	// Test 4: Ver un elemento del mapa
+	fmt.Println("Test 4 resultado: ", m["a"]) // 1
+
+	// Test 5: Ver un elemento que no existe en el mapa
+	fmt.Println("Test 5 resultado: ", m["b"]) // 0
+
+	// Test 6: Cambiar el valor de un elemento del mapa y ver el mapa
+	m["a"] = -1
+	fmt.Println("Test 6 resultado: ", m) // map[a:-1 c:3]
+
+	// Test 7: Eliminar un elemento que no existe en el mapa
+	delete(m, "b")
+	fmt.Println("Test 7 resultado: ", m) // map[a:-1 c:3]
+
+	// Test 8: Verificar si un elemento existe en el mapa
+	_, exists := m["a"]
+	fmt.Println("Test 8.1 resultado: ", exists) // true
+	_, exists = m["b"]
+	fmt.Println("Test 8.2 resultado: ", exists) // false
 }
