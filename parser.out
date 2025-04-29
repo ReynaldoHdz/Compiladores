@@ -1,0 +1,2006 @@
+Created by PLY version 3.11 (http://www.dabeaz.com/ply)
+
+Grammar
+
+Rule 0     S' -> program
+Rule 1     program -> PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END
+Rule 2     prog_vars -> vars
+Rule 3     prog_vars -> empty
+Rule 4     prog_funcs -> funcs prog_funcs
+Rule 5     prog_funcs -> empty
+Rule 6     body -> LBRACE body_prime RBRACE
+Rule 7     body_prime -> statement body_prime
+Rule 8     body_prime -> empty
+Rule 9     assign -> ID EQUALS expression SEMICOLON
+Rule 10    expression -> exp expression_prime
+Rule 11    expression_prime -> GREATER exp
+Rule 12    expression_prime -> LESS exp
+Rule 13    expression_prime -> NOT_EQUALS exp
+Rule 14    expression_prime -> empty
+Rule 15    cte -> CTE_INT
+Rule 16    cte -> CTE_FLOAT
+Rule 17    funcs -> VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON
+Rule 18    funcs_prime -> ID COLON type more_funcs
+Rule 19    funcs_prime -> empty
+Rule 20    more_funcs -> COMMA ID COLON type more_funcs
+Rule 21    more_funcs -> empty
+Rule 22    funcs_vars -> vars
+Rule 23    funcs_vars -> empty
+Rule 24    statement -> assign
+Rule 25    statement -> condition
+Rule 26    statement -> cycle
+Rule 27    statement -> f_call
+Rule 28    statement -> print
+Rule 29    exp -> term exp_prime
+Rule 30    exp_prime -> PLUS term exp_prime
+Rule 31    exp_prime -> MINUS term exp_prime
+Rule 32    exp_prime -> empty
+Rule 33    term -> factor term_prime
+Rule 34    term_prime -> TIMES factor term_prime
+Rule 35    term_prime -> DIVIDE factor term_prime
+Rule 36    term_prime -> empty
+Rule 37    factor -> LPAREN expression RPAREN
+Rule 38    factor -> PLUS factor_prime
+Rule 39    factor -> MINUS factor_prime
+Rule 40    factor -> factor_prime
+Rule 41    factor_prime -> ID
+Rule 42    factor_prime -> cte
+Rule 43    vars -> VAR vars_prime
+Rule 44    vars_prime -> ID id COLON type SEMICOLON vars_prime
+Rule 45    vars_prime -> empty
+Rule 46    id -> COMMA ID id
+Rule 47    id -> empty
+Rule 48    type -> INT
+Rule 49    type -> FLOAT
+Rule 50    print -> PRINT LPAREN print_prime RPAREN SEMICOLON
+Rule 51    print_prime -> expression more_print
+Rule 52    print_prime -> CTE_STRING more_print
+Rule 53    more_print -> COMMA more_print_prime more_print
+Rule 54    more_print -> empty
+Rule 55    more_print_prime -> expression
+Rule 56    more_print_prime -> CTE_STRING
+Rule 57    cycle -> WHILE LPAREN expression RPAREN DO body SEMICOLON
+Rule 58    condition -> IF LPAREN expression RPAREN body else_condition SEMICOLON
+Rule 59    else_condition -> ELSE body
+Rule 60    else_condition -> empty
+Rule 61    f_call -> ID LPAREN f_call_prime RPAREN SEMICOLON
+Rule 62    f_call_prime -> expression more_f_call
+Rule 63    f_call_prime -> empty
+Rule 64    more_f_call -> COMMA expression more_f_call
+Rule 65    more_f_call -> empty
+Rule 66    empty -> <empty>
+
+Terminals, with rules where they appear
+
+COLON                : 18 20 44
+COMMA                : 20 46 53 64
+CTE_FLOAT            : 16
+CTE_INT              : 15
+CTE_STRING           : 52 56
+DIVIDE               : 35
+DO                   : 57
+ELSE                 : 59
+END                  : 1
+EQUALS               : 9
+FLOAT                : 49
+GREATER              : 11
+ID                   : 1 9 17 18 20 41 44 46 61
+IF                   : 58
+INT                  : 48
+LBRACE               : 6
+LBRACKET             : 17
+LESS                 : 12
+LPAREN               : 17 37 50 57 58 61
+MAIN                 : 1
+MINUS                : 31 39
+NOT_EQUALS           : 13
+PLUS                 : 30 38
+PRINT                : 50
+PROGRAM              : 1
+RBRACE               : 6
+RBRACKET             : 17
+RPAREN               : 17 37 50 57 58 61
+SEMICOLON            : 1 9 17 44 50 57 58 61
+TIMES                : 34
+VAR                  : 43
+VOID                 : 17
+WHILE                : 57
+error                : 
+
+Nonterminals, with rules where they appear
+
+assign               : 24
+body                 : 1 17 57 58 59
+body_prime           : 6 7
+condition            : 25
+cte                  : 42
+cycle                : 26
+else_condition       : 58
+empty                : 3 5 8 14 19 21 23 32 36 45 47 54 60 63 65
+exp                  : 10 11 12 13
+exp_prime            : 29 30 31
+expression           : 9 37 51 55 57 58 62 64
+expression_prime     : 10
+f_call               : 27
+f_call_prime         : 61
+factor               : 33 34 35
+factor_prime         : 38 39 40
+funcs                : 4
+funcs_prime          : 17
+funcs_vars           : 17
+id                   : 44 46
+more_f_call          : 62 64
+more_funcs           : 18 20
+more_print           : 51 52 53
+more_print_prime     : 53
+print                : 28
+print_prime          : 50
+prog_funcs           : 1 4
+prog_vars            : 1
+program              : 0
+statement            : 7
+term                 : 29 30 31
+term_prime           : 33 34 35
+type                 : 18 20 44
+vars                 : 2 22
+vars_prime           : 43 44
+
+Parsing method: LALR
+
+state 0
+
+    (0) S' -> . program
+    (1) program -> . PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END
+
+    PROGRAM         shift and go to state 2
+
+    program                        shift and go to state 1
+
+state 1
+
+    (0) S' -> program .
+
+
+
+state 2
+
+    (1) program -> PROGRAM . ID SEMICOLON prog_vars prog_funcs MAIN body END
+
+    ID              shift and go to state 3
+
+
+state 3
+
+    (1) program -> PROGRAM ID . SEMICOLON prog_vars prog_funcs MAIN body END
+
+    SEMICOLON       shift and go to state 4
+
+
+state 4
+
+    (1) program -> PROGRAM ID SEMICOLON . prog_vars prog_funcs MAIN body END
+    (2) prog_vars -> . vars
+    (3) prog_vars -> . empty
+    (43) vars -> . VAR vars_prime
+    (66) empty -> .
+
+    VAR             shift and go to state 8
+    VOID            reduce using rule 66 (empty -> .)
+    MAIN            reduce using rule 66 (empty -> .)
+
+    prog_vars                      shift and go to state 5
+    vars                           shift and go to state 6
+    empty                          shift and go to state 7
+
+state 5
+
+    (1) program -> PROGRAM ID SEMICOLON prog_vars . prog_funcs MAIN body END
+    (4) prog_funcs -> . funcs prog_funcs
+    (5) prog_funcs -> . empty
+    (17) funcs -> . VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON
+    (66) empty -> .
+
+    VOID            shift and go to state 12
+    MAIN            reduce using rule 66 (empty -> .)
+
+    prog_funcs                     shift and go to state 9
+    funcs                          shift and go to state 10
+    empty                          shift and go to state 11
+
+state 6
+
+    (2) prog_vars -> vars .
+
+    VOID            reduce using rule 2 (prog_vars -> vars .)
+    MAIN            reduce using rule 2 (prog_vars -> vars .)
+
+
+state 7
+
+    (3) prog_vars -> empty .
+
+    VOID            reduce using rule 3 (prog_vars -> empty .)
+    MAIN            reduce using rule 3 (prog_vars -> empty .)
+
+
+state 8
+
+    (43) vars -> VAR . vars_prime
+    (44) vars_prime -> . ID id COLON type SEMICOLON vars_prime
+    (45) vars_prime -> . empty
+    (66) empty -> .
+
+    ID              shift and go to state 14
+    VOID            reduce using rule 66 (empty -> .)
+    MAIN            reduce using rule 66 (empty -> .)
+    LBRACE          reduce using rule 66 (empty -> .)
+
+    vars_prime                     shift and go to state 13
+    empty                          shift and go to state 15
+
+state 9
+
+    (1) program -> PROGRAM ID SEMICOLON prog_vars prog_funcs . MAIN body END
+
+    MAIN            shift and go to state 16
+
+
+state 10
+
+    (4) prog_funcs -> funcs . prog_funcs
+    (4) prog_funcs -> . funcs prog_funcs
+    (5) prog_funcs -> . empty
+    (17) funcs -> . VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON
+    (66) empty -> .
+
+    VOID            shift and go to state 12
+    MAIN            reduce using rule 66 (empty -> .)
+
+    funcs                          shift and go to state 10
+    prog_funcs                     shift and go to state 17
+    empty                          shift and go to state 11
+
+state 11
+
+    (5) prog_funcs -> empty .
+
+    MAIN            reduce using rule 5 (prog_funcs -> empty .)
+
+
+state 12
+
+    (17) funcs -> VOID . ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON
+
+    ID              shift and go to state 18
+
+
+state 13
+
+    (43) vars -> VAR vars_prime .
+
+    VOID            reduce using rule 43 (vars -> VAR vars_prime .)
+    MAIN            reduce using rule 43 (vars -> VAR vars_prime .)
+    LBRACE          reduce using rule 43 (vars -> VAR vars_prime .)
+
+
+state 14
+
+    (44) vars_prime -> ID . id COLON type SEMICOLON vars_prime
+    (46) id -> . COMMA ID id
+    (47) id -> . empty
+    (66) empty -> .
+
+    COMMA           shift and go to state 20
+    COLON           reduce using rule 66 (empty -> .)
+
+    id                             shift and go to state 19
+    empty                          shift and go to state 21
+
+state 15
+
+    (45) vars_prime -> empty .
+
+    VOID            reduce using rule 45 (vars_prime -> empty .)
+    MAIN            reduce using rule 45 (vars_prime -> empty .)
+    LBRACE          reduce using rule 45 (vars_prime -> empty .)
+
+
+state 16
+
+    (1) program -> PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN . body END
+    (6) body -> . LBRACE body_prime RBRACE
+
+    LBRACE          shift and go to state 23
+
+    body                           shift and go to state 22
+
+state 17
+
+    (4) prog_funcs -> funcs prog_funcs .
+
+    MAIN            reduce using rule 4 (prog_funcs -> funcs prog_funcs .)
+
+
+state 18
+
+    (17) funcs -> VOID ID . LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON
+
+    LPAREN          shift and go to state 24
+
+
+state 19
+
+    (44) vars_prime -> ID id . COLON type SEMICOLON vars_prime
+
+    COLON           shift and go to state 25
+
+
+state 20
+
+    (46) id -> COMMA . ID id
+
+    ID              shift and go to state 26
+
+
+state 21
+
+    (47) id -> empty .
+
+    COLON           reduce using rule 47 (id -> empty .)
+
+
+state 22
+
+    (1) program -> PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body . END
+
+    END             shift and go to state 27
+
+
+state 23
+
+    (6) body -> LBRACE . body_prime RBRACE
+    (7) body_prime -> . statement body_prime
+    (8) body_prime -> . empty
+    (24) statement -> . assign
+    (25) statement -> . condition
+    (26) statement -> . cycle
+    (27) statement -> . f_call
+    (28) statement -> . print
+    (66) empty -> .
+    (9) assign -> . ID EQUALS expression SEMICOLON
+    (58) condition -> . IF LPAREN expression RPAREN body else_condition SEMICOLON
+    (57) cycle -> . WHILE LPAREN expression RPAREN DO body SEMICOLON
+    (61) f_call -> . ID LPAREN f_call_prime RPAREN SEMICOLON
+    (50) print -> . PRINT LPAREN print_prime RPAREN SEMICOLON
+
+    RBRACE          reduce using rule 66 (empty -> .)
+    ID              shift and go to state 36
+    IF              shift and go to state 37
+    WHILE           shift and go to state 38
+    PRINT           shift and go to state 39
+
+    body_prime                     shift and go to state 28
+    statement                      shift and go to state 29
+    empty                          shift and go to state 30
+    assign                         shift and go to state 31
+    condition                      shift and go to state 32
+    cycle                          shift and go to state 33
+    f_call                         shift and go to state 34
+    print                          shift and go to state 35
+
+state 24
+
+    (17) funcs -> VOID ID LPAREN . funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON
+    (18) funcs_prime -> . ID COLON type more_funcs
+    (19) funcs_prime -> . empty
+    (66) empty -> .
+
+    ID              shift and go to state 40
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    funcs_prime                    shift and go to state 41
+    empty                          shift and go to state 42
+
+state 25
+
+    (44) vars_prime -> ID id COLON . type SEMICOLON vars_prime
+    (48) type -> . INT
+    (49) type -> . FLOAT
+
+    INT             shift and go to state 44
+    FLOAT           shift and go to state 45
+
+    type                           shift and go to state 43
+
+state 26
+
+    (46) id -> COMMA ID . id
+    (46) id -> . COMMA ID id
+    (47) id -> . empty
+    (66) empty -> .
+
+    COMMA           shift and go to state 20
+    COLON           reduce using rule 66 (empty -> .)
+
+    id                             shift and go to state 46
+    empty                          shift and go to state 21
+
+state 27
+
+    (1) program -> PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END .
+
+    $end            reduce using rule 1 (program -> PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END .)
+
+
+state 28
+
+    (6) body -> LBRACE body_prime . RBRACE
+
+    RBRACE          shift and go to state 47
+
+
+state 29
+
+    (7) body_prime -> statement . body_prime
+    (7) body_prime -> . statement body_prime
+    (8) body_prime -> . empty
+    (24) statement -> . assign
+    (25) statement -> . condition
+    (26) statement -> . cycle
+    (27) statement -> . f_call
+    (28) statement -> . print
+    (66) empty -> .
+    (9) assign -> . ID EQUALS expression SEMICOLON
+    (58) condition -> . IF LPAREN expression RPAREN body else_condition SEMICOLON
+    (57) cycle -> . WHILE LPAREN expression RPAREN DO body SEMICOLON
+    (61) f_call -> . ID LPAREN f_call_prime RPAREN SEMICOLON
+    (50) print -> . PRINT LPAREN print_prime RPAREN SEMICOLON
+
+    RBRACE          reduce using rule 66 (empty -> .)
+    ID              shift and go to state 36
+    IF              shift and go to state 37
+    WHILE           shift and go to state 38
+    PRINT           shift and go to state 39
+
+    statement                      shift and go to state 29
+    body_prime                     shift and go to state 48
+    empty                          shift and go to state 30
+    assign                         shift and go to state 31
+    condition                      shift and go to state 32
+    cycle                          shift and go to state 33
+    f_call                         shift and go to state 34
+    print                          shift and go to state 35
+
+state 30
+
+    (8) body_prime -> empty .
+
+    RBRACE          reduce using rule 8 (body_prime -> empty .)
+
+
+state 31
+
+    (24) statement -> assign .
+
+    ID              reduce using rule 24 (statement -> assign .)
+    IF              reduce using rule 24 (statement -> assign .)
+    WHILE           reduce using rule 24 (statement -> assign .)
+    PRINT           reduce using rule 24 (statement -> assign .)
+    RBRACE          reduce using rule 24 (statement -> assign .)
+
+
+state 32
+
+    (25) statement -> condition .
+
+    ID              reduce using rule 25 (statement -> condition .)
+    IF              reduce using rule 25 (statement -> condition .)
+    WHILE           reduce using rule 25 (statement -> condition .)
+    PRINT           reduce using rule 25 (statement -> condition .)
+    RBRACE          reduce using rule 25 (statement -> condition .)
+
+
+state 33
+
+    (26) statement -> cycle .
+
+    ID              reduce using rule 26 (statement -> cycle .)
+    IF              reduce using rule 26 (statement -> cycle .)
+    WHILE           reduce using rule 26 (statement -> cycle .)
+    PRINT           reduce using rule 26 (statement -> cycle .)
+    RBRACE          reduce using rule 26 (statement -> cycle .)
+
+
+state 34
+
+    (27) statement -> f_call .
+
+    ID              reduce using rule 27 (statement -> f_call .)
+    IF              reduce using rule 27 (statement -> f_call .)
+    WHILE           reduce using rule 27 (statement -> f_call .)
+    PRINT           reduce using rule 27 (statement -> f_call .)
+    RBRACE          reduce using rule 27 (statement -> f_call .)
+
+
+state 35
+
+    (28) statement -> print .
+
+    ID              reduce using rule 28 (statement -> print .)
+    IF              reduce using rule 28 (statement -> print .)
+    WHILE           reduce using rule 28 (statement -> print .)
+    PRINT           reduce using rule 28 (statement -> print .)
+    RBRACE          reduce using rule 28 (statement -> print .)
+
+
+state 36
+
+    (9) assign -> ID . EQUALS expression SEMICOLON
+    (61) f_call -> ID . LPAREN f_call_prime RPAREN SEMICOLON
+
+    EQUALS          shift and go to state 49
+    LPAREN          shift and go to state 50
+
+
+state 37
+
+    (58) condition -> IF . LPAREN expression RPAREN body else_condition SEMICOLON
+
+    LPAREN          shift and go to state 51
+
+
+state 38
+
+    (57) cycle -> WHILE . LPAREN expression RPAREN DO body SEMICOLON
+
+    LPAREN          shift and go to state 52
+
+
+state 39
+
+    (50) print -> PRINT . LPAREN print_prime RPAREN SEMICOLON
+
+    LPAREN          shift and go to state 53
+
+
+state 40
+
+    (18) funcs_prime -> ID . COLON type more_funcs
+
+    COLON           shift and go to state 54
+
+
+state 41
+
+    (17) funcs -> VOID ID LPAREN funcs_prime . RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON
+
+    RPAREN          shift and go to state 55
+
+
+state 42
+
+    (19) funcs_prime -> empty .
+
+    RPAREN          reduce using rule 19 (funcs_prime -> empty .)
+
+
+state 43
+
+    (44) vars_prime -> ID id COLON type . SEMICOLON vars_prime
+
+    SEMICOLON       shift and go to state 56
+
+
+state 44
+
+    (48) type -> INT .
+
+    SEMICOLON       reduce using rule 48 (type -> INT .)
+    COMMA           reduce using rule 48 (type -> INT .)
+    RPAREN          reduce using rule 48 (type -> INT .)
+
+
+state 45
+
+    (49) type -> FLOAT .
+
+    SEMICOLON       reduce using rule 49 (type -> FLOAT .)
+    COMMA           reduce using rule 49 (type -> FLOAT .)
+    RPAREN          reduce using rule 49 (type -> FLOAT .)
+
+
+state 46
+
+    (46) id -> COMMA ID id .
+
+    COLON           reduce using rule 46 (id -> COMMA ID id .)
+
+
+state 47
+
+    (6) body -> LBRACE body_prime RBRACE .
+
+    END             reduce using rule 6 (body -> LBRACE body_prime RBRACE .)
+    ELSE            reduce using rule 6 (body -> LBRACE body_prime RBRACE .)
+    SEMICOLON       reduce using rule 6 (body -> LBRACE body_prime RBRACE .)
+    RBRACKET        reduce using rule 6 (body -> LBRACE body_prime RBRACE .)
+
+
+state 48
+
+    (7) body_prime -> statement body_prime .
+
+    RBRACE          reduce using rule 7 (body_prime -> statement body_prime .)
+
+
+state 49
+
+    (9) assign -> ID EQUALS . expression SEMICOLON
+    (10) expression -> . exp expression_prime
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    expression                     shift and go to state 58
+    exp                            shift and go to state 59
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 50
+
+    (61) f_call -> ID LPAREN . f_call_prime RPAREN SEMICOLON
+    (62) f_call_prime -> . expression more_f_call
+    (63) f_call_prime -> . empty
+    (10) expression -> . exp expression_prime
+    (66) empty -> .
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    RPAREN          reduce using rule 66 (empty -> .)
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    f_call_prime                   shift and go to state 69
+    expression                     shift and go to state 70
+    empty                          shift and go to state 71
+    exp                            shift and go to state 59
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 51
+
+    (58) condition -> IF LPAREN . expression RPAREN body else_condition SEMICOLON
+    (10) expression -> . exp expression_prime
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    expression                     shift and go to state 72
+    exp                            shift and go to state 59
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 52
+
+    (57) cycle -> WHILE LPAREN . expression RPAREN DO body SEMICOLON
+    (10) expression -> . exp expression_prime
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    expression                     shift and go to state 73
+    exp                            shift and go to state 59
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 53
+
+    (50) print -> PRINT LPAREN . print_prime RPAREN SEMICOLON
+    (51) print_prime -> . expression more_print
+    (52) print_prime -> . CTE_STRING more_print
+    (10) expression -> . exp expression_prime
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    CTE_STRING      shift and go to state 76
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    print_prime                    shift and go to state 74
+    expression                     shift and go to state 75
+    exp                            shift and go to state 59
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 54
+
+    (18) funcs_prime -> ID COLON . type more_funcs
+    (48) type -> . INT
+    (49) type -> . FLOAT
+
+    INT             shift and go to state 44
+    FLOAT           shift and go to state 45
+
+    type                           shift and go to state 77
+
+state 55
+
+    (17) funcs -> VOID ID LPAREN funcs_prime RPAREN . LBRACKET funcs_vars body RBRACKET SEMICOLON
+
+    LBRACKET        shift and go to state 78
+
+
+state 56
+
+    (44) vars_prime -> ID id COLON type SEMICOLON . vars_prime
+    (44) vars_prime -> . ID id COLON type SEMICOLON vars_prime
+    (45) vars_prime -> . empty
+    (66) empty -> .
+
+    ID              shift and go to state 14
+    VOID            reduce using rule 66 (empty -> .)
+    MAIN            reduce using rule 66 (empty -> .)
+    LBRACE          reduce using rule 66 (empty -> .)
+
+    vars_prime                     shift and go to state 79
+    empty                          shift and go to state 15
+
+state 57
+
+    (41) factor_prime -> ID .
+
+    TIMES           reduce using rule 41 (factor_prime -> ID .)
+    DIVIDE          reduce using rule 41 (factor_prime -> ID .)
+    PLUS            reduce using rule 41 (factor_prime -> ID .)
+    MINUS           reduce using rule 41 (factor_prime -> ID .)
+    GREATER         reduce using rule 41 (factor_prime -> ID .)
+    LESS            reduce using rule 41 (factor_prime -> ID .)
+    NOT_EQUALS      reduce using rule 41 (factor_prime -> ID .)
+    SEMICOLON       reduce using rule 41 (factor_prime -> ID .)
+    COMMA           reduce using rule 41 (factor_prime -> ID .)
+    RPAREN          reduce using rule 41 (factor_prime -> ID .)
+
+
+state 58
+
+    (9) assign -> ID EQUALS expression . SEMICOLON
+
+    SEMICOLON       shift and go to state 80
+
+
+state 59
+
+    (10) expression -> exp . expression_prime
+    (11) expression_prime -> . GREATER exp
+    (12) expression_prime -> . LESS exp
+    (13) expression_prime -> . NOT_EQUALS exp
+    (14) expression_prime -> . empty
+    (66) empty -> .
+
+    GREATER         shift and go to state 82
+    LESS            shift and go to state 83
+    NOT_EQUALS      shift and go to state 84
+    SEMICOLON       reduce using rule 66 (empty -> .)
+    COMMA           reduce using rule 66 (empty -> .)
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    expression_prime               shift and go to state 81
+    empty                          shift and go to state 85
+
+state 60
+
+    (29) exp -> term . exp_prime
+    (30) exp_prime -> . PLUS term exp_prime
+    (31) exp_prime -> . MINUS term exp_prime
+    (32) exp_prime -> . empty
+    (66) empty -> .
+
+    PLUS            shift and go to state 87
+    MINUS           shift and go to state 88
+    GREATER         reduce using rule 66 (empty -> .)
+    LESS            reduce using rule 66 (empty -> .)
+    NOT_EQUALS      reduce using rule 66 (empty -> .)
+    SEMICOLON       reduce using rule 66 (empty -> .)
+    COMMA           reduce using rule 66 (empty -> .)
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    exp_prime                      shift and go to state 86
+    empty                          shift and go to state 89
+
+state 61
+
+    (33) term -> factor . term_prime
+    (34) term_prime -> . TIMES factor term_prime
+    (35) term_prime -> . DIVIDE factor term_prime
+    (36) term_prime -> . empty
+    (66) empty -> .
+
+    TIMES           shift and go to state 91
+    DIVIDE          shift and go to state 92
+    PLUS            reduce using rule 66 (empty -> .)
+    MINUS           reduce using rule 66 (empty -> .)
+    GREATER         reduce using rule 66 (empty -> .)
+    LESS            reduce using rule 66 (empty -> .)
+    NOT_EQUALS      reduce using rule 66 (empty -> .)
+    SEMICOLON       reduce using rule 66 (empty -> .)
+    COMMA           reduce using rule 66 (empty -> .)
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    term_prime                     shift and go to state 90
+    empty                          shift and go to state 93
+
+state 62
+
+    (37) factor -> LPAREN . expression RPAREN
+    (10) expression -> . exp expression_prime
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    expression                     shift and go to state 94
+    exp                            shift and go to state 59
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 63
+
+    (38) factor -> PLUS . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    factor_prime                   shift and go to state 95
+    cte                            shift and go to state 66
+
+state 64
+
+    (40) factor -> factor_prime .
+
+    TIMES           reduce using rule 40 (factor -> factor_prime .)
+    DIVIDE          reduce using rule 40 (factor -> factor_prime .)
+    PLUS            reduce using rule 40 (factor -> factor_prime .)
+    MINUS           reduce using rule 40 (factor -> factor_prime .)
+    GREATER         reduce using rule 40 (factor -> factor_prime .)
+    LESS            reduce using rule 40 (factor -> factor_prime .)
+    NOT_EQUALS      reduce using rule 40 (factor -> factor_prime .)
+    SEMICOLON       reduce using rule 40 (factor -> factor_prime .)
+    COMMA           reduce using rule 40 (factor -> factor_prime .)
+    RPAREN          reduce using rule 40 (factor -> factor_prime .)
+
+
+state 65
+
+    (39) factor -> MINUS . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    factor_prime                   shift and go to state 96
+    cte                            shift and go to state 66
+
+state 66
+
+    (42) factor_prime -> cte .
+
+    TIMES           reduce using rule 42 (factor_prime -> cte .)
+    DIVIDE          reduce using rule 42 (factor_prime -> cte .)
+    PLUS            reduce using rule 42 (factor_prime -> cte .)
+    MINUS           reduce using rule 42 (factor_prime -> cte .)
+    GREATER         reduce using rule 42 (factor_prime -> cte .)
+    LESS            reduce using rule 42 (factor_prime -> cte .)
+    NOT_EQUALS      reduce using rule 42 (factor_prime -> cte .)
+    SEMICOLON       reduce using rule 42 (factor_prime -> cte .)
+    COMMA           reduce using rule 42 (factor_prime -> cte .)
+    RPAREN          reduce using rule 42 (factor_prime -> cte .)
+
+
+state 67
+
+    (15) cte -> CTE_INT .
+
+    TIMES           reduce using rule 15 (cte -> CTE_INT .)
+    DIVIDE          reduce using rule 15 (cte -> CTE_INT .)
+    PLUS            reduce using rule 15 (cte -> CTE_INT .)
+    MINUS           reduce using rule 15 (cte -> CTE_INT .)
+    GREATER         reduce using rule 15 (cte -> CTE_INT .)
+    LESS            reduce using rule 15 (cte -> CTE_INT .)
+    NOT_EQUALS      reduce using rule 15 (cte -> CTE_INT .)
+    SEMICOLON       reduce using rule 15 (cte -> CTE_INT .)
+    COMMA           reduce using rule 15 (cte -> CTE_INT .)
+    RPAREN          reduce using rule 15 (cte -> CTE_INT .)
+
+
+state 68
+
+    (16) cte -> CTE_FLOAT .
+
+    TIMES           reduce using rule 16 (cte -> CTE_FLOAT .)
+    DIVIDE          reduce using rule 16 (cte -> CTE_FLOAT .)
+    PLUS            reduce using rule 16 (cte -> CTE_FLOAT .)
+    MINUS           reduce using rule 16 (cte -> CTE_FLOAT .)
+    GREATER         reduce using rule 16 (cte -> CTE_FLOAT .)
+    LESS            reduce using rule 16 (cte -> CTE_FLOAT .)
+    NOT_EQUALS      reduce using rule 16 (cte -> CTE_FLOAT .)
+    SEMICOLON       reduce using rule 16 (cte -> CTE_FLOAT .)
+    COMMA           reduce using rule 16 (cte -> CTE_FLOAT .)
+    RPAREN          reduce using rule 16 (cte -> CTE_FLOAT .)
+
+
+state 69
+
+    (61) f_call -> ID LPAREN f_call_prime . RPAREN SEMICOLON
+
+    RPAREN          shift and go to state 97
+
+
+state 70
+
+    (62) f_call_prime -> expression . more_f_call
+    (64) more_f_call -> . COMMA expression more_f_call
+    (65) more_f_call -> . empty
+    (66) empty -> .
+
+    COMMA           shift and go to state 99
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    more_f_call                    shift and go to state 98
+    empty                          shift and go to state 100
+
+state 71
+
+    (63) f_call_prime -> empty .
+
+    RPAREN          reduce using rule 63 (f_call_prime -> empty .)
+
+
+state 72
+
+    (58) condition -> IF LPAREN expression . RPAREN body else_condition SEMICOLON
+
+    RPAREN          shift and go to state 101
+
+
+state 73
+
+    (57) cycle -> WHILE LPAREN expression . RPAREN DO body SEMICOLON
+
+    RPAREN          shift and go to state 102
+
+
+state 74
+
+    (50) print -> PRINT LPAREN print_prime . RPAREN SEMICOLON
+
+    RPAREN          shift and go to state 103
+
+
+state 75
+
+    (51) print_prime -> expression . more_print
+    (53) more_print -> . COMMA more_print_prime more_print
+    (54) more_print -> . empty
+    (66) empty -> .
+
+    COMMA           shift and go to state 105
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    more_print                     shift and go to state 104
+    empty                          shift and go to state 106
+
+state 76
+
+    (52) print_prime -> CTE_STRING . more_print
+    (53) more_print -> . COMMA more_print_prime more_print
+    (54) more_print -> . empty
+    (66) empty -> .
+
+    COMMA           shift and go to state 105
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    more_print                     shift and go to state 107
+    empty                          shift and go to state 106
+
+state 77
+
+    (18) funcs_prime -> ID COLON type . more_funcs
+    (20) more_funcs -> . COMMA ID COLON type more_funcs
+    (21) more_funcs -> . empty
+    (66) empty -> .
+
+    COMMA           shift and go to state 109
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    more_funcs                     shift and go to state 108
+    empty                          shift and go to state 110
+
+state 78
+
+    (17) funcs -> VOID ID LPAREN funcs_prime RPAREN LBRACKET . funcs_vars body RBRACKET SEMICOLON
+    (22) funcs_vars -> . vars
+    (23) funcs_vars -> . empty
+    (43) vars -> . VAR vars_prime
+    (66) empty -> .
+
+    VAR             shift and go to state 8
+    LBRACE          reduce using rule 66 (empty -> .)
+
+    funcs_vars                     shift and go to state 111
+    vars                           shift and go to state 112
+    empty                          shift and go to state 113
+
+state 79
+
+    (44) vars_prime -> ID id COLON type SEMICOLON vars_prime .
+
+    VOID            reduce using rule 44 (vars_prime -> ID id COLON type SEMICOLON vars_prime .)
+    MAIN            reduce using rule 44 (vars_prime -> ID id COLON type SEMICOLON vars_prime .)
+    LBRACE          reduce using rule 44 (vars_prime -> ID id COLON type SEMICOLON vars_prime .)
+
+
+state 80
+
+    (9) assign -> ID EQUALS expression SEMICOLON .
+
+    ID              reduce using rule 9 (assign -> ID EQUALS expression SEMICOLON .)
+    IF              reduce using rule 9 (assign -> ID EQUALS expression SEMICOLON .)
+    WHILE           reduce using rule 9 (assign -> ID EQUALS expression SEMICOLON .)
+    PRINT           reduce using rule 9 (assign -> ID EQUALS expression SEMICOLON .)
+    RBRACE          reduce using rule 9 (assign -> ID EQUALS expression SEMICOLON .)
+
+
+state 81
+
+    (10) expression -> exp expression_prime .
+
+    SEMICOLON       reduce using rule 10 (expression -> exp expression_prime .)
+    COMMA           reduce using rule 10 (expression -> exp expression_prime .)
+    RPAREN          reduce using rule 10 (expression -> exp expression_prime .)
+
+
+state 82
+
+    (11) expression_prime -> GREATER . exp
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    exp                            shift and go to state 114
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 83
+
+    (12) expression_prime -> LESS . exp
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    exp                            shift and go to state 115
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 84
+
+    (13) expression_prime -> NOT_EQUALS . exp
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    exp                            shift and go to state 116
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 85
+
+    (14) expression_prime -> empty .
+
+    SEMICOLON       reduce using rule 14 (expression_prime -> empty .)
+    COMMA           reduce using rule 14 (expression_prime -> empty .)
+    RPAREN          reduce using rule 14 (expression_prime -> empty .)
+
+
+state 86
+
+    (29) exp -> term exp_prime .
+
+    GREATER         reduce using rule 29 (exp -> term exp_prime .)
+    LESS            reduce using rule 29 (exp -> term exp_prime .)
+    NOT_EQUALS      reduce using rule 29 (exp -> term exp_prime .)
+    SEMICOLON       reduce using rule 29 (exp -> term exp_prime .)
+    COMMA           reduce using rule 29 (exp -> term exp_prime .)
+    RPAREN          reduce using rule 29 (exp -> term exp_prime .)
+
+
+state 87
+
+    (30) exp_prime -> PLUS . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    term                           shift and go to state 117
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 88
+
+    (31) exp_prime -> MINUS . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    term                           shift and go to state 118
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 89
+
+    (32) exp_prime -> empty .
+
+    GREATER         reduce using rule 32 (exp_prime -> empty .)
+    LESS            reduce using rule 32 (exp_prime -> empty .)
+    NOT_EQUALS      reduce using rule 32 (exp_prime -> empty .)
+    SEMICOLON       reduce using rule 32 (exp_prime -> empty .)
+    COMMA           reduce using rule 32 (exp_prime -> empty .)
+    RPAREN          reduce using rule 32 (exp_prime -> empty .)
+
+
+state 90
+
+    (33) term -> factor term_prime .
+
+    PLUS            reduce using rule 33 (term -> factor term_prime .)
+    MINUS           reduce using rule 33 (term -> factor term_prime .)
+    GREATER         reduce using rule 33 (term -> factor term_prime .)
+    LESS            reduce using rule 33 (term -> factor term_prime .)
+    NOT_EQUALS      reduce using rule 33 (term -> factor term_prime .)
+    SEMICOLON       reduce using rule 33 (term -> factor term_prime .)
+    COMMA           reduce using rule 33 (term -> factor term_prime .)
+    RPAREN          reduce using rule 33 (term -> factor term_prime .)
+
+
+state 91
+
+    (34) term_prime -> TIMES . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    factor                         shift and go to state 119
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 92
+
+    (35) term_prime -> DIVIDE . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    factor                         shift and go to state 120
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 93
+
+    (36) term_prime -> empty .
+
+    PLUS            reduce using rule 36 (term_prime -> empty .)
+    MINUS           reduce using rule 36 (term_prime -> empty .)
+    GREATER         reduce using rule 36 (term_prime -> empty .)
+    LESS            reduce using rule 36 (term_prime -> empty .)
+    NOT_EQUALS      reduce using rule 36 (term_prime -> empty .)
+    SEMICOLON       reduce using rule 36 (term_prime -> empty .)
+    COMMA           reduce using rule 36 (term_prime -> empty .)
+    RPAREN          reduce using rule 36 (term_prime -> empty .)
+
+
+state 94
+
+    (37) factor -> LPAREN expression . RPAREN
+
+    RPAREN          shift and go to state 121
+
+
+state 95
+
+    (38) factor -> PLUS factor_prime .
+
+    TIMES           reduce using rule 38 (factor -> PLUS factor_prime .)
+    DIVIDE          reduce using rule 38 (factor -> PLUS factor_prime .)
+    PLUS            reduce using rule 38 (factor -> PLUS factor_prime .)
+    MINUS           reduce using rule 38 (factor -> PLUS factor_prime .)
+    GREATER         reduce using rule 38 (factor -> PLUS factor_prime .)
+    LESS            reduce using rule 38 (factor -> PLUS factor_prime .)
+    NOT_EQUALS      reduce using rule 38 (factor -> PLUS factor_prime .)
+    SEMICOLON       reduce using rule 38 (factor -> PLUS factor_prime .)
+    COMMA           reduce using rule 38 (factor -> PLUS factor_prime .)
+    RPAREN          reduce using rule 38 (factor -> PLUS factor_prime .)
+
+
+state 96
+
+    (39) factor -> MINUS factor_prime .
+
+    TIMES           reduce using rule 39 (factor -> MINUS factor_prime .)
+    DIVIDE          reduce using rule 39 (factor -> MINUS factor_prime .)
+    PLUS            reduce using rule 39 (factor -> MINUS factor_prime .)
+    MINUS           reduce using rule 39 (factor -> MINUS factor_prime .)
+    GREATER         reduce using rule 39 (factor -> MINUS factor_prime .)
+    LESS            reduce using rule 39 (factor -> MINUS factor_prime .)
+    NOT_EQUALS      reduce using rule 39 (factor -> MINUS factor_prime .)
+    SEMICOLON       reduce using rule 39 (factor -> MINUS factor_prime .)
+    COMMA           reduce using rule 39 (factor -> MINUS factor_prime .)
+    RPAREN          reduce using rule 39 (factor -> MINUS factor_prime .)
+
+
+state 97
+
+    (61) f_call -> ID LPAREN f_call_prime RPAREN . SEMICOLON
+
+    SEMICOLON       shift and go to state 122
+
+
+state 98
+
+    (62) f_call_prime -> expression more_f_call .
+
+    RPAREN          reduce using rule 62 (f_call_prime -> expression more_f_call .)
+
+
+state 99
+
+    (64) more_f_call -> COMMA . expression more_f_call
+    (10) expression -> . exp expression_prime
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    expression                     shift and go to state 123
+    exp                            shift and go to state 59
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 100
+
+    (65) more_f_call -> empty .
+
+    RPAREN          reduce using rule 65 (more_f_call -> empty .)
+
+
+state 101
+
+    (58) condition -> IF LPAREN expression RPAREN . body else_condition SEMICOLON
+    (6) body -> . LBRACE body_prime RBRACE
+
+    LBRACE          shift and go to state 23
+
+    body                           shift and go to state 124
+
+state 102
+
+    (57) cycle -> WHILE LPAREN expression RPAREN . DO body SEMICOLON
+
+    DO              shift and go to state 125
+
+
+state 103
+
+    (50) print -> PRINT LPAREN print_prime RPAREN . SEMICOLON
+
+    SEMICOLON       shift and go to state 126
+
+
+state 104
+
+    (51) print_prime -> expression more_print .
+
+    RPAREN          reduce using rule 51 (print_prime -> expression more_print .)
+
+
+state 105
+
+    (53) more_print -> COMMA . more_print_prime more_print
+    (55) more_print_prime -> . expression
+    (56) more_print_prime -> . CTE_STRING
+    (10) expression -> . exp expression_prime
+    (29) exp -> . term exp_prime
+    (33) term -> . factor term_prime
+    (37) factor -> . LPAREN expression RPAREN
+    (38) factor -> . PLUS factor_prime
+    (39) factor -> . MINUS factor_prime
+    (40) factor -> . factor_prime
+    (41) factor_prime -> . ID
+    (42) factor_prime -> . cte
+    (15) cte -> . CTE_INT
+    (16) cte -> . CTE_FLOAT
+
+    CTE_STRING      shift and go to state 129
+    LPAREN          shift and go to state 62
+    PLUS            shift and go to state 63
+    MINUS           shift and go to state 65
+    ID              shift and go to state 57
+    CTE_INT         shift and go to state 67
+    CTE_FLOAT       shift and go to state 68
+
+    more_print_prime               shift and go to state 127
+    expression                     shift and go to state 128
+    exp                            shift and go to state 59
+    term                           shift and go to state 60
+    factor                         shift and go to state 61
+    factor_prime                   shift and go to state 64
+    cte                            shift and go to state 66
+
+state 106
+
+    (54) more_print -> empty .
+
+    RPAREN          reduce using rule 54 (more_print -> empty .)
+
+
+state 107
+
+    (52) print_prime -> CTE_STRING more_print .
+
+    RPAREN          reduce using rule 52 (print_prime -> CTE_STRING more_print .)
+
+
+state 108
+
+    (18) funcs_prime -> ID COLON type more_funcs .
+
+    RPAREN          reduce using rule 18 (funcs_prime -> ID COLON type more_funcs .)
+
+
+state 109
+
+    (20) more_funcs -> COMMA . ID COLON type more_funcs
+
+    ID              shift and go to state 130
+
+
+state 110
+
+    (21) more_funcs -> empty .
+
+    RPAREN          reduce using rule 21 (more_funcs -> empty .)
+
+
+state 111
+
+    (17) funcs -> VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars . body RBRACKET SEMICOLON
+    (6) body -> . LBRACE body_prime RBRACE
+
+    LBRACE          shift and go to state 23
+
+    body                           shift and go to state 131
+
+state 112
+
+    (22) funcs_vars -> vars .
+
+    LBRACE          reduce using rule 22 (funcs_vars -> vars .)
+
+
+state 113
+
+    (23) funcs_vars -> empty .
+
+    LBRACE          reduce using rule 23 (funcs_vars -> empty .)
+
+
+state 114
+
+    (11) expression_prime -> GREATER exp .
+
+    SEMICOLON       reduce using rule 11 (expression_prime -> GREATER exp .)
+    COMMA           reduce using rule 11 (expression_prime -> GREATER exp .)
+    RPAREN          reduce using rule 11 (expression_prime -> GREATER exp .)
+
+
+state 115
+
+    (12) expression_prime -> LESS exp .
+
+    SEMICOLON       reduce using rule 12 (expression_prime -> LESS exp .)
+    COMMA           reduce using rule 12 (expression_prime -> LESS exp .)
+    RPAREN          reduce using rule 12 (expression_prime -> LESS exp .)
+
+
+state 116
+
+    (13) expression_prime -> NOT_EQUALS exp .
+
+    SEMICOLON       reduce using rule 13 (expression_prime -> NOT_EQUALS exp .)
+    COMMA           reduce using rule 13 (expression_prime -> NOT_EQUALS exp .)
+    RPAREN          reduce using rule 13 (expression_prime -> NOT_EQUALS exp .)
+
+
+state 117
+
+    (30) exp_prime -> PLUS term . exp_prime
+    (30) exp_prime -> . PLUS term exp_prime
+    (31) exp_prime -> . MINUS term exp_prime
+    (32) exp_prime -> . empty
+    (66) empty -> .
+
+    PLUS            shift and go to state 87
+    MINUS           shift and go to state 88
+    GREATER         reduce using rule 66 (empty -> .)
+    LESS            reduce using rule 66 (empty -> .)
+    NOT_EQUALS      reduce using rule 66 (empty -> .)
+    SEMICOLON       reduce using rule 66 (empty -> .)
+    COMMA           reduce using rule 66 (empty -> .)
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    exp_prime                      shift and go to state 132
+    empty                          shift and go to state 89
+
+state 118
+
+    (31) exp_prime -> MINUS term . exp_prime
+    (30) exp_prime -> . PLUS term exp_prime
+    (31) exp_prime -> . MINUS term exp_prime
+    (32) exp_prime -> . empty
+    (66) empty -> .
+
+    PLUS            shift and go to state 87
+    MINUS           shift and go to state 88
+    GREATER         reduce using rule 66 (empty -> .)
+    LESS            reduce using rule 66 (empty -> .)
+    NOT_EQUALS      reduce using rule 66 (empty -> .)
+    SEMICOLON       reduce using rule 66 (empty -> .)
+    COMMA           reduce using rule 66 (empty -> .)
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    exp_prime                      shift and go to state 133
+    empty                          shift and go to state 89
+
+state 119
+
+    (34) term_prime -> TIMES factor . term_prime
+    (34) term_prime -> . TIMES factor term_prime
+    (35) term_prime -> . DIVIDE factor term_prime
+    (36) term_prime -> . empty
+    (66) empty -> .
+
+    TIMES           shift and go to state 91
+    DIVIDE          shift and go to state 92
+    PLUS            reduce using rule 66 (empty -> .)
+    MINUS           reduce using rule 66 (empty -> .)
+    GREATER         reduce using rule 66 (empty -> .)
+    LESS            reduce using rule 66 (empty -> .)
+    NOT_EQUALS      reduce using rule 66 (empty -> .)
+    SEMICOLON       reduce using rule 66 (empty -> .)
+    COMMA           reduce using rule 66 (empty -> .)
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    term_prime                     shift and go to state 134
+    empty                          shift and go to state 93
+
+state 120
+
+    (35) term_prime -> DIVIDE factor . term_prime
+    (34) term_prime -> . TIMES factor term_prime
+    (35) term_prime -> . DIVIDE factor term_prime
+    (36) term_prime -> . empty
+    (66) empty -> .
+
+    TIMES           shift and go to state 91
+    DIVIDE          shift and go to state 92
+    PLUS            reduce using rule 66 (empty -> .)
+    MINUS           reduce using rule 66 (empty -> .)
+    GREATER         reduce using rule 66 (empty -> .)
+    LESS            reduce using rule 66 (empty -> .)
+    NOT_EQUALS      reduce using rule 66 (empty -> .)
+    SEMICOLON       reduce using rule 66 (empty -> .)
+    COMMA           reduce using rule 66 (empty -> .)
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    term_prime                     shift and go to state 135
+    empty                          shift and go to state 93
+
+state 121
+
+    (37) factor -> LPAREN expression RPAREN .
+
+    TIMES           reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+    DIVIDE          reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+    PLUS            reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+    MINUS           reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+    GREATER         reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+    LESS            reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+    NOT_EQUALS      reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+    SEMICOLON       reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+    COMMA           reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+    RPAREN          reduce using rule 37 (factor -> LPAREN expression RPAREN .)
+
+
+state 122
+
+    (61) f_call -> ID LPAREN f_call_prime RPAREN SEMICOLON .
+
+    ID              reduce using rule 61 (f_call -> ID LPAREN f_call_prime RPAREN SEMICOLON .)
+    IF              reduce using rule 61 (f_call -> ID LPAREN f_call_prime RPAREN SEMICOLON .)
+    WHILE           reduce using rule 61 (f_call -> ID LPAREN f_call_prime RPAREN SEMICOLON .)
+    PRINT           reduce using rule 61 (f_call -> ID LPAREN f_call_prime RPAREN SEMICOLON .)
+    RBRACE          reduce using rule 61 (f_call -> ID LPAREN f_call_prime RPAREN SEMICOLON .)
+
+
+state 123
+
+    (64) more_f_call -> COMMA expression . more_f_call
+    (64) more_f_call -> . COMMA expression more_f_call
+    (65) more_f_call -> . empty
+    (66) empty -> .
+
+    COMMA           shift and go to state 99
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    more_f_call                    shift and go to state 136
+    empty                          shift and go to state 100
+
+state 124
+
+    (58) condition -> IF LPAREN expression RPAREN body . else_condition SEMICOLON
+    (59) else_condition -> . ELSE body
+    (60) else_condition -> . empty
+    (66) empty -> .
+
+    ELSE            shift and go to state 138
+    SEMICOLON       reduce using rule 66 (empty -> .)
+
+    else_condition                 shift and go to state 137
+    empty                          shift and go to state 139
+
+state 125
+
+    (57) cycle -> WHILE LPAREN expression RPAREN DO . body SEMICOLON
+    (6) body -> . LBRACE body_prime RBRACE
+
+    LBRACE          shift and go to state 23
+
+    body                           shift and go to state 140
+
+state 126
+
+    (50) print -> PRINT LPAREN print_prime RPAREN SEMICOLON .
+
+    ID              reduce using rule 50 (print -> PRINT LPAREN print_prime RPAREN SEMICOLON .)
+    IF              reduce using rule 50 (print -> PRINT LPAREN print_prime RPAREN SEMICOLON .)
+    WHILE           reduce using rule 50 (print -> PRINT LPAREN print_prime RPAREN SEMICOLON .)
+    PRINT           reduce using rule 50 (print -> PRINT LPAREN print_prime RPAREN SEMICOLON .)
+    RBRACE          reduce using rule 50 (print -> PRINT LPAREN print_prime RPAREN SEMICOLON .)
+
+
+state 127
+
+    (53) more_print -> COMMA more_print_prime . more_print
+    (53) more_print -> . COMMA more_print_prime more_print
+    (54) more_print -> . empty
+    (66) empty -> .
+
+    COMMA           shift and go to state 105
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    more_print                     shift and go to state 141
+    empty                          shift and go to state 106
+
+state 128
+
+    (55) more_print_prime -> expression .
+
+    COMMA           reduce using rule 55 (more_print_prime -> expression .)
+    RPAREN          reduce using rule 55 (more_print_prime -> expression .)
+
+
+state 129
+
+    (56) more_print_prime -> CTE_STRING .
+
+    COMMA           reduce using rule 56 (more_print_prime -> CTE_STRING .)
+    RPAREN          reduce using rule 56 (more_print_prime -> CTE_STRING .)
+
+
+state 130
+
+    (20) more_funcs -> COMMA ID . COLON type more_funcs
+
+    COLON           shift and go to state 142
+
+
+state 131
+
+    (17) funcs -> VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body . RBRACKET SEMICOLON
+
+    RBRACKET        shift and go to state 143
+
+
+state 132
+
+    (30) exp_prime -> PLUS term exp_prime .
+
+    GREATER         reduce using rule 30 (exp_prime -> PLUS term exp_prime .)
+    LESS            reduce using rule 30 (exp_prime -> PLUS term exp_prime .)
+    NOT_EQUALS      reduce using rule 30 (exp_prime -> PLUS term exp_prime .)
+    SEMICOLON       reduce using rule 30 (exp_prime -> PLUS term exp_prime .)
+    COMMA           reduce using rule 30 (exp_prime -> PLUS term exp_prime .)
+    RPAREN          reduce using rule 30 (exp_prime -> PLUS term exp_prime .)
+
+
+state 133
+
+    (31) exp_prime -> MINUS term exp_prime .
+
+    GREATER         reduce using rule 31 (exp_prime -> MINUS term exp_prime .)
+    LESS            reduce using rule 31 (exp_prime -> MINUS term exp_prime .)
+    NOT_EQUALS      reduce using rule 31 (exp_prime -> MINUS term exp_prime .)
+    SEMICOLON       reduce using rule 31 (exp_prime -> MINUS term exp_prime .)
+    COMMA           reduce using rule 31 (exp_prime -> MINUS term exp_prime .)
+    RPAREN          reduce using rule 31 (exp_prime -> MINUS term exp_prime .)
+
+
+state 134
+
+    (34) term_prime -> TIMES factor term_prime .
+
+    PLUS            reduce using rule 34 (term_prime -> TIMES factor term_prime .)
+    MINUS           reduce using rule 34 (term_prime -> TIMES factor term_prime .)
+    GREATER         reduce using rule 34 (term_prime -> TIMES factor term_prime .)
+    LESS            reduce using rule 34 (term_prime -> TIMES factor term_prime .)
+    NOT_EQUALS      reduce using rule 34 (term_prime -> TIMES factor term_prime .)
+    SEMICOLON       reduce using rule 34 (term_prime -> TIMES factor term_prime .)
+    COMMA           reduce using rule 34 (term_prime -> TIMES factor term_prime .)
+    RPAREN          reduce using rule 34 (term_prime -> TIMES factor term_prime .)
+
+
+state 135
+
+    (35) term_prime -> DIVIDE factor term_prime .
+
+    PLUS            reduce using rule 35 (term_prime -> DIVIDE factor term_prime .)
+    MINUS           reduce using rule 35 (term_prime -> DIVIDE factor term_prime .)
+    GREATER         reduce using rule 35 (term_prime -> DIVIDE factor term_prime .)
+    LESS            reduce using rule 35 (term_prime -> DIVIDE factor term_prime .)
+    NOT_EQUALS      reduce using rule 35 (term_prime -> DIVIDE factor term_prime .)
+    SEMICOLON       reduce using rule 35 (term_prime -> DIVIDE factor term_prime .)
+    COMMA           reduce using rule 35 (term_prime -> DIVIDE factor term_prime .)
+    RPAREN          reduce using rule 35 (term_prime -> DIVIDE factor term_prime .)
+
+
+state 136
+
+    (64) more_f_call -> COMMA expression more_f_call .
+
+    RPAREN          reduce using rule 64 (more_f_call -> COMMA expression more_f_call .)
+
+
+state 137
+
+    (58) condition -> IF LPAREN expression RPAREN body else_condition . SEMICOLON
+
+    SEMICOLON       shift and go to state 144
+
+
+state 138
+
+    (59) else_condition -> ELSE . body
+    (6) body -> . LBRACE body_prime RBRACE
+
+    LBRACE          shift and go to state 23
+
+    body                           shift and go to state 145
+
+state 139
+
+    (60) else_condition -> empty .
+
+    SEMICOLON       reduce using rule 60 (else_condition -> empty .)
+
+
+state 140
+
+    (57) cycle -> WHILE LPAREN expression RPAREN DO body . SEMICOLON
+
+    SEMICOLON       shift and go to state 146
+
+
+state 141
+
+    (53) more_print -> COMMA more_print_prime more_print .
+
+    RPAREN          reduce using rule 53 (more_print -> COMMA more_print_prime more_print .)
+
+
+state 142
+
+    (20) more_funcs -> COMMA ID COLON . type more_funcs
+    (48) type -> . INT
+    (49) type -> . FLOAT
+
+    INT             shift and go to state 44
+    FLOAT           shift and go to state 45
+
+    type                           shift and go to state 147
+
+state 143
+
+    (17) funcs -> VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET . SEMICOLON
+
+    SEMICOLON       shift and go to state 148
+
+
+state 144
+
+    (58) condition -> IF LPAREN expression RPAREN body else_condition SEMICOLON .
+
+    ID              reduce using rule 58 (condition -> IF LPAREN expression RPAREN body else_condition SEMICOLON .)
+    IF              reduce using rule 58 (condition -> IF LPAREN expression RPAREN body else_condition SEMICOLON .)
+    WHILE           reduce using rule 58 (condition -> IF LPAREN expression RPAREN body else_condition SEMICOLON .)
+    PRINT           reduce using rule 58 (condition -> IF LPAREN expression RPAREN body else_condition SEMICOLON .)
+    RBRACE          reduce using rule 58 (condition -> IF LPAREN expression RPAREN body else_condition SEMICOLON .)
+
+
+state 145
+
+    (59) else_condition -> ELSE body .
+
+    SEMICOLON       reduce using rule 59 (else_condition -> ELSE body .)
+
+
+state 146
+
+    (57) cycle -> WHILE LPAREN expression RPAREN DO body SEMICOLON .
+
+    ID              reduce using rule 57 (cycle -> WHILE LPAREN expression RPAREN DO body SEMICOLON .)
+    IF              reduce using rule 57 (cycle -> WHILE LPAREN expression RPAREN DO body SEMICOLON .)
+    WHILE           reduce using rule 57 (cycle -> WHILE LPAREN expression RPAREN DO body SEMICOLON .)
+    PRINT           reduce using rule 57 (cycle -> WHILE LPAREN expression RPAREN DO body SEMICOLON .)
+    RBRACE          reduce using rule 57 (cycle -> WHILE LPAREN expression RPAREN DO body SEMICOLON .)
+
+
+state 147
+
+    (20) more_funcs -> COMMA ID COLON type . more_funcs
+    (20) more_funcs -> . COMMA ID COLON type more_funcs
+    (21) more_funcs -> . empty
+    (66) empty -> .
+
+    COMMA           shift and go to state 109
+    RPAREN          reduce using rule 66 (empty -> .)
+
+    more_funcs                     shift and go to state 149
+    empty                          shift and go to state 110
+
+state 148
+
+    (17) funcs -> VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON .
+
+    VOID            reduce using rule 17 (funcs -> VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON .)
+    MAIN            reduce using rule 17 (funcs -> VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON .)
+
+
+state 149
+
+    (20) more_funcs -> COMMA ID COLON type more_funcs .
+
+    RPAREN          reduce using rule 20 (more_funcs -> COMMA ID COLON type more_funcs .)
+
