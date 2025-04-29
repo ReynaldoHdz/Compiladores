@@ -145,7 +145,7 @@ def p_expression_prime(p):
     if len(p) == 3:  # Casos con operador
         p[0] = ('relop', p[1], p[2])
     else:  # Caso empty
-        p[0] = p[1]  # o p[0] = None si prefieres
+        p[0] = p[1]
 
 def p_cte(p):
     '''cte : CTE_INT
