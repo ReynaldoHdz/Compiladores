@@ -99,10 +99,120 @@ def t_error(t):
 # Construir el lexer
 lexer = lex.lex()
 
+# --------------------- SEMANTIC ANALYSIS ---------------------
+# Global semantic structures
+function_dir = None
+semantic_cube = None
+
+def init_semantic_analysis():
+    global function_dir, semantic_cube
+    function_dir = {
+        'functions': {
+            'global': {
+                'return_type': 'void',
+                'vars': {},
+                'params': []
+            }
+        },
+        'current_scope': 'global'
+    }
+    
+    semantic_cube = {
+        # int operations
+        ('int', '+', 'int'): 'int',
+        ('int', '-', 'int'): 'int',
+        ('int', '*', 'int'): 'int',
+        ('int', '/', 'int'): 'float',
+        ('int', '>', 'int'): 'bool',
+        ('int', '<', 'int'): 'bool',
+        ('int', '!=', 'int'): 'bool',
+        ('int', '=', 'int'): 'int',
+        
+        # float operations
+        ('float', '+', 'float'): 'float',
+        ('float', '-', 'float'): 'float',
+        ('float', '*', 'float'): 'float',
+        ('float', '/', 'float'): 'float',
+        ('float', '>', 'float'): 'bool',
+        ('float', '<', 'float'): 'bool',
+        ('float', '!=', 'float'): 'bool',
+        ('float', '=', 'float'): 'float',
+        
+        # mixed operations
+        ('int', '+', 'float'): 'float',
+        ('float', '+', 'int'): 'float',
+        ('int', '*', 'float'): 'float',
+        ('float', '*', 'int'): 'float',
+        ('int', '=', 'float'): 'float',
+        ('float', '=', 'int'): 'int'
+    }
+
+def check_types(left_type, op, right_type):
+    return semantic_cube.get((left_type, op, right_type), 'error')
+
+def add_function(name, return_type):
+    if name in function_dir['functions']:
+        raise Exception(f"Función '{name}' ya declarada")
+    function_dir['functions'][name] = {
+        'return_type': return_type,
+        'vars': {},
+        'params': []
+    }
+
+def enter_scope(name):
+    function_dir['current_scope'] = name
+
+def exit_scope():
+    function_dir['current_scope'] = 'global'
+
+def add_variable(name, var_type):
+    scope = function_dir['current_scope']
+    if name in function_dir['functions'][scope]['vars']:
+        raise Exception(f"Variable '{name}' ya declarada en el ámbito {scope}")
+    function_dir['functions'][scope]['vars'][name] = {
+        'type': var_type,
+        'scope': scope
+    }
+
+def get_variable(name):
+    # Buscar en el ámbito actual primero
+    current_scope = function_dir['current_scope']
+    if name in function_dir['functions'][current_scope]['vars']:
+        return function_dir['functions'][current_scope]['vars'][name]
+    # Buscar en ámbito global
+    if name in function_dir['functions']['global']['vars']:
+        return function_dir['functions']['global']['vars'][name]
+    return None
+
+def add_parameter(func_name, param_name, param_type):
+    function_dir['functions'][func_name]['params'].append({
+        'name': param_name,
+        'type': param_type
+    })
+    add_variable(param_name, param_type)
+
 # --------------------- PARSER ---------------------
 def p_program(p):
-    '''program : PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END'''
+    '''program : PROGRAM ID SEMICOLON prog_vars prog_funcs main_declaration END'''
+    # Verificar que exista la función main
+    if 'main' not in function_dir['functions']:
+        raise Exception("Programa debe tener una función main")
     p[0] = ('program', p[2], p[4], p[5], p[7])
+
+def p_main_declaration(p):
+    'main_declaration : MAIN body'
+    # Registrar la función main cuando aparece en el código
+    if 'main' in function_dir['functions']:
+        raise Exception("Error semántico: 'main' ya está declarado")
+    
+    function_dir['functions']['main'] = {
+        'return_type': 'void',
+        'vars': {},
+        'params': []
+    }
+    function_dir['current_scope'] = 'main'
+    p[0] = ('main_declaration', p[2])
+    function_dir['current_scope'] = 'global'
 
 def p_prog_vars(p):
     '''prog_vars : vars
@@ -131,11 +241,41 @@ def p_body_prime(p):
 
 def p_assign(p):
     'assign : ID EQUALS expression SEMICOLON'
+    var_name = p[1]
+    var_info = get_variable(var_name)
+    if not var_info:
+        raise Exception(f"Variable '{var_name}' no declarada")
+    
+    expr_type = p[3]['type']
+    
+    # Permitir asignación int -> float
+    if var_info['type'] == 'float' and expr_type == 'int':
+        p[0] = ('assign', var_name, p[3])
+    else:
+        result_type, _ = check_types(var_info['type'], '=', expr_type)
+        if result_type == 'error':
+            raise Exception(f"No se puede asignar {expr_type} a variable de tipo {var_info['type']}")
     p[0] = ('assign', p[1], p[3])
 
 def p_expression(p):
     'expression : exp expression_prime'
-    p[0] = ('expression', p[1], p[2])
+    if p[2][0] == 'empty':  # No hay operación relacional
+        p[0] = p[1]
+    else:
+        left_type = p[1]['type']
+        right_type = p[2][2]['type']
+        op = p[2][1]
+        
+        # Manejar conversión implícita int -> float
+        if left_type == 'int' and right_type == 'float':
+            left_type = 'float'
+        elif left_type == 'float' and right_type == 'int':
+            right_type = 'float'
+        
+        result_type, _ = check_types(left_type, op, right_type)
+        if result_type == 'error':
+            raise Exception(f"Tipos incompatibles: {left_type} {op} {right_type}")
+        p[0] = {'type': 'bool', 'value': None}
 
 def p_expression_prime(p):
     '''expression_prime : GREATER exp
@@ -150,11 +290,31 @@ def p_expression_prime(p):
 def p_cte(p):
     '''cte : CTE_INT
             | CTE_FLOAT'''
-    p[0] = ('cte', p[1])
+    p[0] = (p.slice[1].type, p[1])  # Devuelve ('CTE_INT', valor) o ('CTE_FLOAT', valor)
 
 def p_funcs(p):
     'funcs : VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON'
+    # Registrar función
+    add_function(p[2], 'void')
+    enter_scope(p[2])
+    
+    # Procesar parámetros
+    if p[4][0] != 'empty':
+        process_parameters(p[2], p[4])
+    
     p[0] = ('funcs', p[2], p[4], p[7], p[8])
+    exit_scope()
+
+def process_parameters(func_name, params_node):
+    """Process function parameters"""
+    # params_node: ('funcs_prime', id, type, more_params)
+    param_name = params_node[1]
+    param_type = params_node[2][1]  # ('type', actual_type)
+    add_parameter(func_name, param_name, param_type)
+    
+    # Procesar más parámetros si existen
+    if params_node[3][0] != 'empty':
+        process_parameters(func_name, params_node[3])
 
 def p_funcs_prime(p):
     '''funcs_prime : ID COLON type more_funcs
@@ -187,7 +347,23 @@ def p_statement(p):
 
 def p_exp(p):
     'exp : term exp_prime'
-    p[0] = ('exp', p[1], p[2])
+    if p[2][0] == 'empty':  # No hay operación
+        p[0] = p[1]
+    else:
+        left_type = p[1]['type']
+        right_type = p[2][2]['type']
+        op = p[2][1]
+        
+        # Conversión implícita int -> float
+        if left_type == 'int' and right_type == 'float':
+            left_type = 'float'
+        elif left_type == 'float' and right_type == 'int':
+            right_type = 'float'
+        
+        result_type, _ = check_types(left_type, op, right_type)
+        if result_type == 'error':
+            raise Exception(f"Tipos incompatibles en operación: {left_type} {op} {right_type}")
+        p[0] = {'type': result_type, 'value': None}
 
 def p_exp_prime(p):
     '''exp_prime : PLUS term exp_prime
@@ -226,7 +402,30 @@ def p_factor(p):
 def p_factor_prime(p):
     '''factor_prime : ID
                     | cte'''
-    p[0] = ('factor_prime', p[1])
+    if isinstance(p[1], tuple):
+        if p[1][0] == 'ID':  # Es un identificador
+            var_name = p[1][1]
+            var_info = get_variable(var_name)
+            if not var_info:
+                # Verificar si es parámetro de función
+                current_func = function_dir['current_scope']
+                if current_func != 'global':
+                    params = function_dir['functions'][current_func]['params']
+                    param_info = next((p for p in params if p['name'] == var_name), None)
+                    if param_info:
+                        p[0] = {'type': param_info['type'], 'value': var_name}
+                        return
+            
+            if not var_info:
+                raise Exception(f"Variable '{var_name}' no declarada")
+            p[0] = {'type': var_info['type'], 'value': var_name}
+        elif p[1][0] in ('CTE_INT', 'CTE_FLOAT'):
+            const_type = 'int' if p[1][0] == 'CTE_INT' else 'float'
+            p[0] = {'type': const_type, 'value': p[1][1]}
+        else:
+            raise Exception(f"Tipo de factor inválido: {p[1][0]}")
+    else:
+        raise Exception(f"Estructura inválida en factor: {p[1]}")
 
 def p_vars(p):
     'vars : VAR vars_prime'
@@ -236,9 +435,24 @@ def p_vars_prime(p):
     '''vars_prime : ID id COLON type SEMICOLON vars_prime
                   | empty'''
     if len(p) == 7:  # Caso recursivo
+        # Añadir variables a la tabla
+        current_type = p[4][1]  # ('type', 'int'/'float')
+        variable_names = [p[1]] + get_id_list(p[2])
+        add_variables(variable_names, current_type)
         p[0] = ('vars_prime', p[1], p[2], p[4], p[6])
     else:  # Caso base (empty)
         p[0] = p[1]
+
+def add_variables(names, var_type):
+    """Añade múltiples variables a la tabla de símbolos"""
+    for name in names:
+        add_variable(name, var_type)
+
+def get_id_list(id_node):
+    """Extrae recursivamente la lista de IDs de la regla id"""
+    if id_node[0] == 'empty':
+        return []
+    return [id_node[1]] + get_id_list(id_node[2])
 
 def p_id(p):
     '''id : COMMA ID id
@@ -277,10 +491,16 @@ def p_more_print_prime(p):
 
 def p_cycle(p):
     'cycle : WHILE LPAREN expression RPAREN DO body SEMICOLON'
+    # Verificar que la expresión sea booleana
+    if p[3]['type'] != 'bool':
+        raise Exception("La condición del while debe ser booleana")
     p[0] = ('while_loop', p[3], p[6])  # (condición, cuerpo)
 
 def p_condition(p):
     'condition : IF LPAREN expression RPAREN body else_condition SEMICOLON'
+    # Verificar que la expresión sea booleana
+    if p[3]['type'] != 'bool':
+        raise Exception("La condición del if debe ser booleana")
     p[0] = ('condition', p[3], p[5], p[6])
 
 def p_else_condition(p):
@@ -293,7 +513,38 @@ def p_else_condition(p):
 
 def p_f_call(p):
     'f_call : ID LPAREN f_call_prime RPAREN SEMICOLON'
+     # Verificar que la función exista
+    if p[1] not in function_dir['functions']:
+        raise Exception(f"Función '{p[1]}' no declarada")
+    
+    # Verificar parámetros
+    check_parameters(p[1], p[3])
+
     p[0] = ('f_call', p[1], p[3])
+
+def check_parameters(func_name, params_node):
+    """Check function call parameters match declaration"""
+    expected_params = function_dir['functions'][func_name]['params']
+    actual_params = get_param_list(params_node)
+    
+    if len(expected_params) != len(actual_params):
+        raise Exception(f"Número incorrecto de parámetros para {func_name}")
+    
+    for expected, actual in zip(expected_params, actual_params):
+        result_type = check_types(expected['type'], '=', actual['type'])
+        if result_type == 'error':
+            raise Exception(f"Tipo incorrecto para parámetro {expected['name']}")
+
+def get_param_list(params_node):
+    """Extract list of parameter types from f_call_prime node"""
+    if params_node[0] == 'empty':
+        return []
+    
+    first_param = params_node[1]['type']
+    if params_node[2][0] == 'empty':
+        return [first_param]
+    
+    return [first_param] + get_param_list(params_node[2])
 
 def p_f_call_prime(p):
     '''f_call_prime : expression more_f_call
@@ -315,149 +566,28 @@ def p_empty(p):
     'empty :'
     p[0] = ('empty',)
 
+class SemanticError(Exception):
+    pass
+
 def p_error(p):
     if p:
-        print(f"Error de sintaxis antes de '{p.value}' (tipo {p.type}, línea {p.lineno})")
-        # Muestra los últimos tokens procesados
-        print("Contexto:", parser.symstack[-5:])
+        error_msg = f"Error de sintaxis en línea {p.lineno}: Token inesperado '{p.value}'"
+        print(error_msg)
     else:
-        print("Error de sintaxis al final del input")
+        print("Error de sintaxis: final de archivo inesperado")
 
 parser = yacc.yacc()
 
-# -------------PRUEBAS------------------
+init_semantic_analysis()
+
+
 
 # Declaración mínima de programa
-test1 = '''
-program minimo;
-main {
-}
-end
-'''
-
-# Declaración de múltiples variables globales
-test2 = '''
-program multi_vars;
-var 
-    x, y, z : int;
-    u, v : float;
-main {
-}
-end
-'''
-
-# Función simple sin parámetros
-test3 = '''
-program func_simple;
-void saludar() [ { print("Hola"); } ];
-main {
-    saludar();
-}
-end
-'''
-
-# Función con parámetros y variables locales
-test4 = '''
-program func_compleja;
-void calcular(a : int, b : float) [ 
-    var resultado : float; 
-    { resultado = a * b; } 
-];
-main {
-    calcular(5, 3.2);
-}
-end
-'''
-
-# Función vacía
-test5 = '''
-program func_vacia;
-void vacia() [ { } ];
-main {
-    vacia();
-}
-end
-'''
-
-# If-else anidado
-test6 = '''
-program ifs;
-var x : int;
-main {
-    x = 10;
-    if (x > 5) {
-        if (x < 15) {
-            print("Entre 5 y 15");
-        } else {
-            print("Mayor a 15");
-        };
-    };
-}
-end
-'''
-
-# While con condición
-test7 = '''
-program whiles;
-var x, y : int;
-main {
-    x = 10;
-    y = 0;
-    while (y != 5) do {
-        x = x - 1;
-        y = y + 1;
-    };
-}
-end
-'''
-
-# Expresiones aritméticas complejas
-test8 = '''
-program expresiones;
-var 
-    a, b : int;
-    c : float;
-main {
-    a = 10 * (5 + 3) - 4 / 2;
-    b = (a / 3) + 7;
-    c = (a + b) * 3.14;
-}
-end
-'''
-
-# Múltiples prints
-test9 = '''
-program outputs;
-var edad : int;
-main {
-    edad = 25;
-    print("Juan", " Edad: ", edad);
-}
-end
-'''
-
-# Anidamiento
-test10 = '''
-program anidado;
-main {
-    if (true) {
-        while (false) do {
-            if (1) {
-                print("Anidado");
-            };
-        };
-    };
-}
-end
-'''
-
-# Ejemplo de programa sencillo
-test11 = '''
+data = '''
 program ejemplo;
 var 
     x, y : int;
     z : float;
-void funcion(a : int, b : float) [ var z : float; { z = a + b; } ];
 main {
     x = 10;
     if (x > 5) {
@@ -472,18 +602,7 @@ main {
 }
 end
 '''
-
-# Ejecutar pruebas
-tests = [test1, test2, test3, test4, test5, test6, test7, test8, test9, test10, test11]
-
-for i, test in enumerate(tests, 1):
-    print(f"Ejecutando prueba {i}:")
-    lexer.input(test)
-    while True:
-        tok = lexer.token()
-        if not tok:
-            break
-        print(tok)
-    result = parser.parse(test)
-    print("Resultado del análisis:", result)
-    print("-" * 40)
+    
+lexer.input(data)
+parser.parse(data, lexer=lexer)
+print("Análisis semántico completado")

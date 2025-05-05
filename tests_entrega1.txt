@@ -1,0 +1,162 @@
+# -------------PRUEBAS------------------
+
+# Declaración mínima de programa
+test1 = '''
+program minimo;
+main {
+}
+end
+'''
+
+# Declaración de múltiples variables globales
+test2 = '''
+program multi_vars;
+var 
+    x, y, z : int;
+    u, v : float;
+main {
+}
+end
+'''
+
+# Función simple sin parámetros
+test3 = '''
+program func_simple;
+void saludar() [ { print("Hola"); } ];
+main {
+    saludar();
+}
+end
+'''
+
+# Función con parámetros y variables locales
+test4 = '''
+program func_compleja;
+void calcular(a : int, b : float) [ 
+    var resultado : float; 
+    { resultado = a * b; } 
+];
+main {
+    calcular(5, 3.2);
+}
+end
+'''
+
+# Función vacía
+test5 = '''
+program func_vacia;
+void vacia() [ { } ];
+main {
+    vacia();
+}
+end
+'''
+
+# If-else anidado
+test6 = '''
+program ifs;
+var x : int;
+main {
+    x = 10;
+    if (x > 5) {
+        if (x < 15) {
+            print("Entre 5 y 15");
+        } else {
+            print("Mayor a 15");
+        };
+    };
+}
+end
+'''
+
+# While con condición
+test7 = '''
+program whiles;
+var x, y : int;
+main {
+    x = 10;
+    y = 0;
+    while (y != 5) do {
+        x = x - 1;
+        y = y + 1;
+    };
+}
+end
+'''
+
+# Expresiones aritméticas complejas
+test8 = '''
+program expresiones;
+var 
+    a, b : int;
+    c : float;
+main {
+    a = 10 * (5 + 3) - 4 / 2;
+    b = (a / 3) + 7;
+    c = (a + b) * 3.14;
+}
+end
+'''
+
+# Múltiples prints
+test9 = '''
+program outputs;
+var edad : int;
+main {
+    edad = 25;
+    print("Juan", " Edad: ", edad);
+}
+end
+'''
+
+# Anidamiento
+test10 = '''
+program anidado;
+main {
+    if (true) {
+        while (false) do {
+            if (1) {
+                print("Anidado");
+            };
+        };
+    };
+}
+end
+'''
+
+# Ejemplo de programa sencillo
+test11 = '''
+program ejemplo;
+var 
+    x, y : int;
+    z : float;
+void funcion(a : int, b : float) [ var z : float; { z = a + b; } ];
+main {
+    x = 10;
+    if (x > 5) {
+        print("El valor es: ", x);
+    } else {
+        y = 20;
+    };
+    while (x != 0) do {
+        x = x - 1;
+    };
+    print(z);
+}
+end
+'''
+
+# Ejecutar pruebas
+tests = [test1, test2, test3, test4, test5, test6, test7, test8, test9, test10, test11]
+
+for i, test in enumerate(tests, 1):
+    print(f"Ejecutando prueba {i}:")
+    lexer.input(test)
+    while True:
+        tok = lexer.token()
+        if not tok:
+            break
+        print(tok)
+    result = parser.parse(test)
+    print("Resultado del análisis:", result)
+    print("-" * 40)

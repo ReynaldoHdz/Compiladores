@@ -1,3 +1,5 @@
+parser.out
+parsetab.py
 venv/
 __pycache__/
 *.py[cod]
