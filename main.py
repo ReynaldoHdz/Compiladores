@@ -99,6 +99,100 @@ def t_error(t):
 # Construir el lexer
 lexer = lex.lex()
 
+# --- Paso 1: Tabla de Símbolos ---
+class SymbolTable:
+    def __init__(self):
+        self.variables = {}  # nombre -> (tipo, scope)
+
+    def add_variable(self, name, var_type, scope):
+        if name in self.variables:
+            raise Exception(f"Variable '{name}' ya declarada.")
+        self.variables[name] = (var_type, scope)
+
+    def get_variable(self, name):
+        if name not in self.variables:
+            raise Exception(f"Variable '{name}' no declarada.")
+        return self.variables[name]
+
+# --- Paso 2: Directorio de Funciones ---
+class FunctionDirectory:
+    def __init__(self):
+        self.functions = {}  # nombre -> {'tipo': tipo_retorno, 'parametros': [(tipo, nombre)], 'variables': SymbolTable()}
+
+    def add_function(self, name, return_type):
+        if name in self.functions:
+            raise Exception(f"Funcion '{name}' ya declarada.")
+        self.functions[name] = {
+            'tipo': return_type,
+            'parametros': [],
+            'variables': SymbolTable()
+        }
+
+    def add_parameter(self, func_name, param_type, param_name):
+        if func_name not in self.functions:
+            raise Exception(f"Funcion '{func_name}' no existe.")
+        self.functions[func_name]['parametros'].append((param_type, param_name))
+        self.functions[func_name]['variables'].add_variable(param_name, param_type, 'param')
+
+    def get_function(self, name):
+        if name not in self.functions:
+            raise Exception(f"Funcion '{name}' no declarada.")
+        return self.functions[name]
+
+# --- Paso 3: Cubo Semántico ---
+cubo_semantico = {
+    '+': {
+        ('int', 'int'): 'int',
+        ('int', 'float'): 'float',
+        ('float', 'int'): 'float',
+        ('float', 'float'): 'float',
+        ('string', 'string'): 'string'
+    },
+    '-': {
+        ('int', 'int'): 'int',
+        ('int', 'float'): 'float',
+        ('float', 'int'): 'float',
+        ('float', 'float'): 'float',
+    },
+    '*': {
+        ('int', 'int'): 'int',
+        ('int', 'float'): 'float',
+        ('float', 'int'): 'float',
+        ('float', 'float'): 'float',
+    },
+    '/': {
+        ('int', 'int'): 'float',
+        ('int', 'float'): 'float',
+        ('float', 'int'): 'float',
+        ('float', 'float'): 'float',
+    },
+    '<': {
+        ('int', 'int'): 'bool',
+        ('int', 'float'): 'bool',
+        ('float', 'int'): 'bool',
+        ('float', 'float'): 'bool'
+    },
+    '>': {
+        ('int', 'int'): 'bool',
+        ('int', 'float'): 'bool',
+        ('float', 'int'): 'bool',
+        ('float', 'float'): 'bool'
+    },
+    '!=': {
+        ('int', 'int'): 'bool',
+        ('float', 'float'): 'bool',
+        ('int', 'float'): 'bool',
+        ('float', 'int'): 'bool',
+        ('string', 'string'): 'bool'
+    }
+    # Se puede expandir con más operadores y combinaciones
+}
+
+# --- Instancias globales ---
+function_directory = FunctionDirectory()
+global_symbol_table = SymbolTable()
+current_function = None  # Nombre de la función actual en contexto
+
 # --------------------- PARSER ---------------------
 def p_program(p):
     '''program : PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END'''
@@ -324,166 +418,3 @@ def p_error(p):
         print("Error de sintaxis al final del input")
 
 parser = yacc.yacc()
-
-# -------------PRUEBAS------------------
-
-# Declaración mínima de programa
-test1 = '''
-program minimo;
-main {
-}
-end
-'''
-
-# Declaración de múltiples variables globales
-test2 = '''
-program multi_vars;
-var 
-    x, y, z : int;
-    u, v : float;
-main {
-}
-end
-'''
-
-# Función simple sin parámetros
-test3 = '''
-program func_simple;
-void saludar() [ { print("Hola"); } ];
-main {
-    saludar();
-}
-end
-'''
-
-# Función con parámetros y variables locales
-test4 = '''
-program func_compleja;
-void calcular(a : int, b : float) [ 
-    var resultado : float; 
-    { resultado = a * b; } 
-];
-main {
-    calcular(5, 3.2);
-}
-end
-'''
-
-# Función vacía
-test5 = '''
-program func_vacia;
-void vacia() [ { } ];
-main {
-    vacia();
-}
-end
-'''
-
-# If-else anidado
-test6 = '''
-program ifs;
-var x : int;
-main {
-    x = 10;
-    if (x > 5) {
-        if (x < 15) {
-            print("Entre 5 y 15");
-        } else {
-            print("Mayor a 15");
-        };
-    };
-}
-end
-'''
-
-# While con condición
-test7 = '''
-program whiles;
-var x, y : int;
-main {
-    x = 10;
-    y = 0;
-    while (y != 5) do {
-        x = x - 1;
-        y = y + 1;
-    };
-}
-end
-'''
-
-# Expresiones aritméticas complejas
-test8 = '''
-program expresiones;
-var 
-    a, b : int;
-    c : float;
-main {
-    a = 10 * (5 + 3) - 4 / 2;
-    b = (a / 3) + 7;
-    c = (a + b) * 3.14;
-}
-end
-'''
-
-# Múltiples prints
-test9 = '''
-program outputs;
-var edad : int;
-main {
-    edad = 25;
-    print("Juan", " Edad: ", edad);
-}
-end
-'''
-
-# Anidamiento
-test10 = '''
-program anidado;
-main {
-    if (true) {
-        while (false) do {
-            if (1) {
-                print("Anidado");
-            };
-        };
-    };
-}
-end
-'''
-
-# Ejemplo de programa sencillo
-test11 = '''
-program ejemplo;
-var 
-    x, y : int;
-    z : float;
-void funcion(a : int, b : float) [ var z : float; { z = a + b; } ];
-main {
-    x = 10;
-    if (x > 5) {
-        print("El valor es: ", x);
-    } else {
-        y = 20;
-    };
-    while (x != 0) do {
-        x = x - 1;
-    };
-    print(z);
-}
-end
-'''
-
-# Ejecutar pruebas
-tests = [test1, test2, test3, test4, test5, test6, test7, test8, test9, test10, test11]
-
-for i, test in enumerate(tests, 1):
-    print(f"Ejecutando prueba {i}:")
-    lexer.input(test)
-    while True:
-        tok = lexer.token()
-        if not tok:
-            break
-        print(tok)
-    result = parser.parse(test)
-    print("Resultado del análisis:", result)
-    print("-" * 40)
