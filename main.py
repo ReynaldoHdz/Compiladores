@@ -139,11 +139,36 @@ class Compiler:
         return temp_name
 
     def emit_quad(self, op, arg1, arg2, result):
-        """Generate a new quadruple"""
+        """Generate quadruple with type checking"""
+        type1 = self.get_operand_type(arg1)
+        type2 = self.get_operand_type(arg2) if arg2 else None
+        
+        # Handle type conversions if needed
+        if type1 != type2 and arg2:
+            if {type1, type2} == {'int', 'float'}:
+                # Convert int to float
+                if type1 == 'int':
+                    conv_temp = self.generate_temp()
+                    self.quadruples.append(('int_to_float', arg1, None, conv_temp))
+                    arg1 = conv_temp
+                else:
+                    conv_temp = self.generate_temp()
+                    self.quadruples.append(('int_to_float', arg2, None, conv_temp))
+                    arg2 = conv_temp
+        
         quad = (op, arg1, arg2, result)
         self.quadruples.append(quad)
         return quad
         
+    def get_operand_type(self, operand):
+        """Determine type of an operand (variable or constant)"""
+        if isinstance(operand, int):
+            return 'int'
+        elif isinstance(operand, float):
+            return 'float'
+        else:  # Variable name
+            var_info = self.symbol_table.lookup_variable(operand)
+            return var_info['type'] if var_info else None
 
     # --------------------- Lexer Methods ---------------------
     def t_ID(self, t):
@@ -208,10 +233,28 @@ class Compiler:
 
     def p_assign(self, p):
         'assign : ID EQUALS expression SEMICOLON'
-        p[0] = ('assign', p[1], p[3])
+        # The expression result should be on top of operand_stack
+        result = self.operand_stack.pop()
+        var_name = p[1]
+        
+        # Verify variable exists
+        if not self.symbol_table.lookup_variable(var_name):
+            raise ValueError(f"Undeclared variable {var_name}")
+        
+        self.emit_quad('=', result, None, var_name)
+        p[0] = ('assign', var_name, p[3])
 
     def p_expression(self, p):
         'expression : exp expression_prime'
+        if p[2][0] != 'empty':  # If there's a relational operator
+            op = p[2][1]
+            right_operand = self.operand_stack.pop()
+            left_operand = self.operand_stack.pop()
+            temp = self.generate_temp()
+        
+            # Add type checking here using symbol_table if needed
+            self.emit_quad(op, left_operand, right_operand, temp)
+            self.operand_stack.append(temp)
         p[0] = ('expression', p[1], p[2])
 
     def p_expression_prime(self, p):
@@ -274,6 +317,14 @@ class Compiler:
 
     def p_exp(self, p):
         'exp : term exp_prime'
+        if p[2][0] != 'empty':  # If there's + or -
+            op = p[2][0]
+            right_operand = self.operand_stack.pop()
+            left_operand = self.operand_stack.pop()
+            temp = self.generate_temp()
+            
+            self.emit_quad(op, left_operand, right_operand, temp)
+            self.operand_stack.append(temp)
         p[0] = ('exp', p[1], p[2])
 
     def p_exp_prime(self, p):
@@ -287,6 +338,14 @@ class Compiler:
 
     def p_term(self, p):
         'term : factor term_prime'
+        if p[2][0] != 'empty':  # If there's * or /
+            op = p[2][0]
+            right_operand = self.operand_stack.pop()
+            left_operand = self.operand_stack.pop()
+            temp = self.generate_temp()
+            
+            self.emit_quad(op, left_operand, right_operand, temp)
+            self.operand_stack.append(temp)
         p[0] = ('term', p[1], p[2])
 
     def p_term_prime(self, p):
@@ -314,12 +373,14 @@ class Compiler:
         '''factor_prime : ID
                         | cte'''
         if p[1][0] == 'ID':
+            # Verify variable exists in symbol table
             var_info = self.symbol_table.lookup_variable(p[1])
             if not var_info:
-                raise ValueError(f"Undeclared variable '{p[1]}'")
-            p[0] = ('variable', p[1], var_info['type'])
-        else:
-            p[0] = ('factor_prime', p[1])
+                raise ValueError(f"Undeclared variable {p[1]}")
+            self.operand_stack.append(p[1])
+        else:  # Constant
+            self.operand_stack.append(p[1])
+        p[0] = ('factor_prime', p[1])
 
     def p_vars(self, p):
         'vars : VAR vars_prime'
@@ -429,25 +490,160 @@ class Compiler:
         else:
             print("Error de sintaxis al final del input")
 
-    # ... rest of your parser methods ...
-
     # --------------------- Public Interface ---------------------
     def compile(self, source_code):
         self.lexer.input(source_code)
         return self.parser.parse(lexer=self.lexer)
     
+    def reset(self):
+        """Reset the compiler state for new compilation"""
+        self.quadruples = []
+        self.operand_stack = []
+        self.operator_stack = []
+        self.temp_counter = 0  # Reset temporary counter
+        # Reset symbol table if needed
+        self.symbol_table = SymbolTable()
+        self.symbol_table.enter_scope()  # Global scope
+    
 
-# Example usage
-source_code = """
-program Test;
-var x: int;
-main {
-    x = 5;
-    print(x);
-}
-end
-"""
+def run_test_case(compiler, source_code, expected_quads):
+    print(f"\nTesting: {source_code.strip()}")
+    try:
+        compiler.reset()  # Reset compiler state before each test
+        
+        compiler.compile(source_code)
+        
+        print("Generated Quadruples:")
+        for i, quad in enumerate(compiler.quadruples):
+            print(f"{i}: {quad}")
+            
+        # Normalize temporary variables in expected quads for comparison
+        normalized_quads = []
+        temp_map = {}
+        next_temp = 0
+        
+        for quad in compiler.quadruples:
+            normalized = list(quad)
+            for i in range(4):
+                if isinstance(normalized[i], str) and normalized[i].startswith('t'):
+                    if normalized[i] not in temp_map:
+                        temp_map[normalized[i]] = f"t{next_temp}"
+                        next_temp += 1
+                    normalized[i] = temp_map[normalized[i]]
+            normalized_quads.append(tuple(normalized))
+        
+        # Do the same normalization for expected quads
+        expected_normalized = []
+        temp_map = {}
+        next_temp = 0
+        
+        for quad in expected_quads:
+            normalized = list(quad)
+            for i in range(4):
+                if isinstance(normalized[i], str) and normalized[i].startswith('t'):
+                    if normalized[i] not in temp_map:
+                        temp_map[normalized[i]] = f"t{next_temp}"
+                        next_temp += 1
+                    normalized[i] = temp_map[normalized[i]]
+            expected_normalized.append(tuple(normalized))
+            
+        assert len(normalized_quads) == len(expected_normalized), \
+            f"Expected {len(expected_normalized)} quads, got {len(normalized_quads)}"
+            
+        for i, (generated, expected) in enumerate(zip(normalized_quads, expected_normalized)):
+            assert generated == expected, f"Quad {i} mismatch:\nGenerated: {generated}\nExpected: {expected}"
+            
+        print("✓ Test passed")
+    except Exception as e:
+        print(f"✗ Test failed: {str(e)}")
+        raise
 
+# Initialize compiler once
 compiler = Compiler()
-result = compiler.compile(source_code)
-print(result)
+
+def test_arithmetic():
+    # Simple expression
+    run_test_case(compiler, """
+    program test;
+    var a,b,c,x:int;
+    main {
+        x = a + b * c;
+    }
+    end
+    """, [
+        ('*', 'b', 'c', 't0'),
+        ('+', 'a', 't0', 't1'),
+        ('=', 't1', None, 'x')
+    ])
+
+    # With parentheses
+    run_test_case(compiler, """
+    program test;
+    var a,b,c,x:int;
+    main {
+        x = (a + b) * c;
+    }
+    end
+    """, [
+        ('+', 'a', 'b', 't0'),
+        ('*', 't0', 'c', 't1'),
+        ('=', 't1', None, 'x')
+    ])
+
+def test_type_conversion():
+    # Mixed int/float operations
+    run_test_case(compiler, """
+    program test;
+    var a:int; b,x:float;
+    main {
+        x = a + b;
+    }
+    end
+    """, [
+        ('int_to_float', 'a', None, 't0'),
+        ('+', 't0', 'b', 't1'),
+        ('=', 't1', None, 'x')
+    ])
+
+def test_error_cases():
+    # Undeclared variable
+    try:
+        compiler.compile("""
+        program test;
+        main {
+            x = 5;
+        }
+        end
+        """)
+        assert False, "Should have raised undeclared variable error"
+    except ValueError as e:
+        assert "Undeclared variable" in str(e)
+
+    # Type mismatch
+    try:
+        compiler.compile("""
+        program test;
+        var a:int; b:float;
+        main {
+            a = b;  # Should require explicit conversion
+        }
+        end
+        """)
+        assert False, "Should have raised type error"
+    except ValueError as e:
+        assert "Type mismatch" in str(e)
+
+def run_full_test_suite():
+    print("Running Arithmetic Tests...")
+    test_arithmetic()
+    
+    print("\nRunning Type Conversion Tests...")
+    test_type_conversion()
+    
+    print("\nRunning Error Cases...")
+    test_error_cases()
+    
+    print("\nAll tests completed!")
+
+if __name__ == "__main__":
+    run_full_test_suite()
