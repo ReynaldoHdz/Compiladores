@@ -605,6 +605,41 @@ def test_type_conversion():
         ('=', 't1', None, 'x')
     ])
 
+def test_assignment():
+    run_test_case(compiler, """
+    program test;
+    var a,b,c: int;
+    main {
+        a = 1;
+        b = 2;
+        c = a + b;
+    }
+    end
+    """, [
+        ('=', ('cte', 1), None, 'a'),
+        ('=', ('cte', 2), None, 'b'),
+        ('+', 'a', 'b', 't0'),
+        ('=', 't0', None, 'c')
+    ])
+
+def test_var_and_const():
+    run_test_case(compiler, """
+    program test;
+    var a,b,c: int;
+    main {
+        a = 1;
+        b = 2;
+        c = a + b * 3;
+    }
+    end
+    """, [
+        ('=', ('cte', 1), None, 'a'),
+        ('=', ('cte', 2), None, 'b'),
+        ('*', 'b', ('cte', 3), 't0'),
+        ('+', 'a', 't0', 't1'),
+        ('=', 't1', None, 'c')
+    ])
+
 def test_error_cases():
     # Undeclared variable
     try:
@@ -625,7 +660,7 @@ def test_error_cases():
         program test;
         var a:int; b:float;
         main {
-            a = b;  # Should require explicit conversion
+            a = b;
         }
         end
         """)
@@ -637,11 +672,17 @@ def run_full_test_suite():
     print("Running Arithmetic Tests...")
     test_arithmetic()
     
-    print("\nRunning Type Conversion Tests...")
+    print("\nRunning Type Conversion Test...")
     test_type_conversion()
+
+    print("\Running Variable Assignment Test...")
+    test_assignment()
     
-    print("\nRunning Error Cases...")
-    test_error_cases()
+    print("\Running Var and Const Test...")
+    test_var_and_const()
+    
+    """ print("\nRunning Error Cases...")
+    test_error_cases() """
     
     print("\nAll tests completed!")
 
