@@ -200,7 +200,6 @@ class Compiler:
         t.lexer.skip(1)
 
     # --------------------- Parser Methods ---------------------
-    # (All your existing p_* methods go here)
     def p_program(self, p):
         '''program : PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END'''
         self.symbol_table.enter_scope()  # Global scope
@@ -444,7 +443,7 @@ class Compiler:
 
     def p_cycle(self, p):
         'cycle : WHILE LPAREN expression RPAREN DO body SEMICOLON'
-        p[0] = ('while_loop', p[3], p[6])  # (condición, cuerpo)
+        p[0] = ('while_loop', p[3], p[6])
 
     def p_condition(self, p):
         'condition : IF LPAREN expression RPAREN body else_condition SEMICOLON'
@@ -485,7 +484,6 @@ class Compiler:
     def p_error(self, p):
         if p:
             print(f"Error de sintaxis antes de '{p.value}' (tipo {p.type}, línea {p.lineno})")
-            # Muestra los últimos tokens procesados
             print("Contexto:", self.parser.symstack[-5:])
         else:
             print("Error de sintaxis al final del input")
