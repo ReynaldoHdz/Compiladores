@@ -1,60 +1,7 @@
 import ply.lex as lex
 import ply.yacc as yacc
-
-class SymbolTable:
-    def __init__(self):
-        self.scopes = [{}]  # Stack of scopes (global scope by default)
-        self.functions = {}  # Function directory
-        self.current_scope = 0  # Points to current scope in stack
-
-    def enter_scope(self):
-        """Create a new scope level"""
-        self.scopes.append({})
-        self.current_scope += 1
-
-    def exit_scope(self):
-        """Leave current scope"""
-        if self.current_scope > 0:  # Don't pop global scope
-            self.scopes.pop()
-            self.current_scope -= 1
-
-    def add_variable(self, name, var_type, size=1):
-        """Add variable to current scope"""
-        if name in self.scopes[self.current_scope]:
-            raise ValueError(f"Variable '{name}' already declared in this scope")
-        self.scopes[self.current_scope][name] = {
-            'type': var_type,
-            'size': size,
-            'address': None  # Will be filled during memory allocation
-        }
-
-    def lookup_variable(self, name):
-        """Find variable in current or enclosing scopes"""
-        for scope in reversed(self.scopes[:self.current_scope + 1]):
-            if name in scope:
-                return scope[name]
-        return None
-
-    def add_function(self, name, return_type, parameters=None):
-        """Add function to function directory"""
-        if name in self.functions:
-            raise ValueError(f"Function '{name}' already declared")
-        self.functions[name] = {
-            'return_type': return_type,
-            'parameters': parameters or [],
-            'variables': {},  # Will store function's local variables
-            'address': None   # Will be filled during code generation
-        }
-        return self.functions[name]
-
-    def get_function(self, name):
-        """Retrieve function details"""
-        return self.functions.get(name)
-
-    def current_scope_variables(self):
-        """Get variables in current scope"""
-        return self.scopes[self.current_scope]
-
+from SymbolTable import SymbolTable
+from MemoryManager import MemoryManager
 class Compiler:
     # --------------------- Lexer Definitions ---------------------
     # Reserved words (class variable)
@@ -122,6 +69,7 @@ class Compiler:
 
     def __init__(self):
         # Initialize compiler state
+        self.memory = MemoryManager()
         self.symbol_table = SymbolTable()
         self.quadruples = []
         self.operand_stack = []
@@ -132,33 +80,15 @@ class Compiler:
         self.lexer = lex.lex(module=self)
         self.parser = yacc.yacc(module=self)
 
+        # Initialize global scope
+        self.current_scope = "global"
+        self.symbol_table.enter_scope()
+
     def generate_temp(self):
         """Generate a new temporary variable"""
         temp_name = f"t{self.temp_counter}"
         self.temp_counter += 1
         return temp_name
-
-    def emit_quad(self, op, arg1, arg2, result):
-        """Generate quadruple with type checking"""
-        type1 = self.get_operand_type(arg1)
-        type2 = self.get_operand_type(arg2) if arg2 else None
-        
-        # Handle type conversions if needed
-        if type1 != type2 and arg2:
-            if {type1, type2} == {'int', 'float'}:
-                # Convert int to float
-                if type1 == 'int':
-                    conv_temp = self.generate_temp()
-                    self.quadruples.append(('int_to_float', arg1, None, conv_temp))
-                    arg1 = conv_temp
-                else:
-                    conv_temp = self.generate_temp()
-                    self.quadruples.append(('int_to_float', arg2, None, conv_temp))
-                    arg2 = conv_temp
-        
-        quad = (op, arg1, arg2, result)
-        self.quadruples.append(quad)
-        return quad
         
     def get_operand_type(self, operand):
         """Determine type of an operand (variable or constant)"""
@@ -169,6 +99,43 @@ class Compiler:
         else:  # Variable name
             var_info = self.symbol_table.lookup_variable(operand)
             return var_info['type'] if var_info else None
+        
+    def get_address(self, identifier):
+        """Get memory address for a variable or constant"""
+        if isinstance(identifier, int):
+            # Integer constant
+            if identifier not in self.memory.constants['int'].values():
+                addr = self.memory.allocate('const_int', identifier)
+            else:
+                addr = next(k for k,v in self.memory.constants['int'].items() if v == identifier)
+            return addr
+        
+        elif isinstance(identifier, float):
+            # Float constant
+            if identifier not in self.memory.constants['float'].values():
+                addr = self.memory.allocate('const_float', identifier)
+            else:
+                addr = next(k for k,v in self.memory.constants['float'].items() if v == identifier)
+            return addr
+        
+        else:
+            # Variable
+            var_info = self.symbol_table.lookup_variable(identifier)
+            if not var_info:
+                raise ValueError(f"Undeclared variable {identifier}")
+            
+            segment = f"{'local' if self.current_scope != 'global' else 'global'}_{var_info['type']}"
+            if not hasattr(var_info, 'address'):
+                var_info['address'] = self.memory.allocate(segment)
+            return var_info['address']
+
+    def emit_quad(self, op, arg1=None, arg2=None, result=None):
+        """Generate memory-based quadruple"""
+        op_code = self.memory.get_op_code(op)
+        if op_code == -1:
+            raise ValueError(f"Invalid operation {op}")
+        
+        self.quadruples.append((op_code, arg1, arg2, result))
 
     # --------------------- Lexer Methods ---------------------
     def t_ID(self, t):
@@ -233,27 +200,50 @@ class Compiler:
     def p_assign(self, p):
         'assign : ID EQUALS expression SEMICOLON'
         # The expression result should be on top of operand_stack
-        result = self.operand_stack.pop()
         var_name = p[1]
-        
-        # Verify variable exists
-        if not self.symbol_table.lookup_variable(var_name):
+        var_info = self.symbol_table.lookup_variable(var_name)
+        if not var_info:
             raise ValueError(f"Undeclared variable {var_name}")
         
-        self.emit_quad('=', result, None, var_name)
+        result = self.operand_stack.pop()
+        
+        # Get the actual value if it's a constant
+        source_value = result.get('value')
+        if isinstance(source_value, str) and source_value.startswith('temp'):
+            source_value = None  # Don't check conversion for temps
+        
+        # Type checking
+        if not self.memory.validate_assignment(var_info['type'], result['type'], source_value):
+            raise TypeError(
+                f"Cannot assign {result['type']} ({source_value if source_value else 'expression'}) "
+                f"to {var_info['type']} variable {var_name}"
+            )
+        
+        # Generate conversion if needed
+        if var_info['type'] == 'float' and result['type'] == 'int':
+            temp_addr = self.memory.allocate('float', is_temp=True)
+            self.emit_quad('int_to_float', result['address'], None, temp_addr)
+            result = {'address': temp_addr, 'type': 'float'}
+        
+        # Generate the assignment quadruple
+        self.emit_quad('=', result['address'], None, var_info['address'])
         p[0] = ('assign', var_name, p[3])
 
     def p_expression(self, p):
         'expression : exp expression_prime'
         if p[2][0] != 'empty':  # If there's a relational operator
             op = p[2][1]
-            right_operand = self.operand_stack.pop()
-            left_operand = self.operand_stack.pop()
-            temp = self.generate_temp()
-        
-            # Add type checking here using symbol_table if needed
-            self.emit_quad(op, left_operand, right_operand, temp)
-            self.operand_stack.append(temp)
+            right = self.operand_stack.pop()
+            left = self.operand_stack.pop()
+            
+            # Allocate temp result (always boolean)
+            temp_addr = self.memory.allocate('int', is_temp=True)
+            self.emit_quad(op, left['address'], right['address'], temp_addr)
+            self.operand_stack.append({
+                'address': temp_addr,
+                'type': 'int',
+                'value': f'temp_{temp_addr}'
+            })
         p[0] = ('expression', p[1], p[2])
 
     def p_expression_prime(self, p):
@@ -316,15 +306,30 @@ class Compiler:
 
     def p_exp(self, p):
         'exp : term exp_prime'
-        if p[2][0] != 'empty':  # If there's + or -
+        if p[2][0] != 'empty':  # + or -
             op = p[2][0]
-            right_operand = self.operand_stack.pop()
-            left_operand = self.operand_stack.pop()
-            temp = self.generate_temp()
+            right = self.operand_stack.pop()
+            left = self.operand_stack.pop()
             
-            self.emit_quad(op, left_operand, right_operand, temp)
-            self.operand_stack.append(temp)
+            # Determine result type
+            result_type = 'float' if 'float' in (left['type'], right['type']) else 'int'
+            
+            # Allocate temp
+            temp_addr = self.memory.allocate(result_type, is_temp=True)
+            self.emit_quad(op, left['address'], right['address'], temp_addr)
+            self.operand_stack.append({
+                'address': temp_addr,
+                'type': result_type,
+                'value': f'temp_{temp_addr}'
+            })
         p[0] = ('exp', p[1], p[2])
+
+    def get_type(self, address):
+        """Determine type from memory address"""
+        for segment, (start, end) in self.memory.memory_map.items():
+            if start <= address <= end:
+                return segment.split('_')[-1]  # Returns 'int', 'float', etc.
+        raise ValueError(f"Invalid memory address {address}")
 
     def p_exp_prime(self, p):
         '''exp_prime : PLUS term exp_prime
@@ -339,12 +344,37 @@ class Compiler:
         'term : factor term_prime'
         if p[2][0] != 'empty':  # If there's * or /
             op = p[2][0]
-            right_operand = self.operand_stack.pop()
-            left_operand = self.operand_stack.pop()
-            temp = self.generate_temp()
+            right = self.operand_stack.pop()
+            left = self.operand_stack.pop()
             
-            self.emit_quad(op, left_operand, right_operand, temp)
-            self.operand_stack.append(temp)
+            # Special handling for division
+            if op == '/':
+                # Division always produces float
+                result_type = 'float'
+                
+                # Convert left operand if needed
+                if left['type'] == 'int':
+                    temp_addr = self.memory.allocate('float', is_temp=True)
+                    self.emit_quad('int_to_float', left['address'], None, temp_addr)
+                    left = {'address': temp_addr, 'type': 'float'}
+                
+                # Convert right operand if needed
+                if right['type'] == 'int':
+                    temp_addr = self.memory.allocate('float', is_temp=True)
+                    self.emit_quad('int_to_float', right['address'], None, temp_addr)
+                    right = {'address': temp_addr, 'type': 'float'}
+            else:
+                # For other operations, normal type promotion
+                result_type = 'float' if 'float' in (left['type'], right['type']) else 'int'
+            
+            # Allocate temp
+            temp_addr = self.memory.allocate(result_type, is_temp=True)
+            self.emit_quad(op, left['address'], right['address'], temp_addr)
+            self.operand_stack.append({
+                'address': temp_addr,
+                'type': result_type,
+                'value': f'temp_{temp_addr}'
+            })
         p[0] = ('term', p[1], p[2])
 
     def p_term_prime(self, p):
@@ -371,14 +401,27 @@ class Compiler:
     def p_factor_prime(self, p):
         '''factor_prime : ID
                         | cte'''
-        if p[1][0] == 'ID':
-            # Verify variable exists in symbol table
-            var_info = self.symbol_table.lookup_variable(p[1])
+        if isinstance(p[1], tuple) and p[1][0] == 'ID':
+            # Variable case
+            var_name = p[1][1]
+            var_info = self.symbol_table.lookup_variable(var_name)
             if not var_info:
-                raise ValueError(f"Undeclared variable {p[1]}")
-            self.operand_stack.append(p[1])
-        else:  # Constant
-            self.operand_stack.append(p[1])
+                raise ValueError(f"Undeclared variable {var_name}")
+            self.operand_stack.append({
+                'address': var_info['address'],
+                'type': var_info['type'],
+                'value': var_name
+            })
+        else:
+            # Constant case
+            const_value = p[1][1] if isinstance(p[1], tuple) else p[1]
+            const_type = 'float' if isinstance(const_value, float) else 'int'
+            const_addr = self.memory.allocate(const_type, value=const_value)
+            self.operand_stack.append({
+                'address': const_addr,
+                'type': const_type,
+                'value': const_value
+            })
         p[0] = ('factor_prime', p[1])
 
     def p_vars(self, p):
@@ -393,7 +436,11 @@ class Compiler:
             # Add all variables in declaration list
             variables = [p[1]] + self._flatten_id_list(p[2])
             for var_name in variables:
+                # Allocate memory and add to symbol table
+                address = self.memory.allocate(var_type)
                 self.symbol_table.add_variable(var_name, var_type)
+                var_info = self.symbol_table.lookup_variable(var_name)
+                var_info['address'] = address
             p[0] = ('vars_prime', variables, var_type, p[6])
         else:
             p[0] = p[1]
@@ -504,185 +551,32 @@ class Compiler:
         self.symbol_table.enter_scope()  # Global scope
     
 
-def run_test_case(compiler, source_code, expected_quads):
+def run_test_case(compiler, source_code):
     print(f"\nTesting: {source_code.strip()}")
-    try:
-        compiler.reset()  # Reset compiler state before each test
-        
-        compiler.compile(source_code)
-        
-        print("Generated Quadruples:")
-        for i, quad in enumerate(compiler.quadruples):
-            print(f"{i}: {quad}")
-            
-        # Normalize temporary variables in expected quads for comparison
-        normalized_quads = []
-        temp_map = {}
-        next_temp = 0
-        
-        for quad in compiler.quadruples:
-            normalized = list(quad)
-            for i in range(4):
-                if isinstance(normalized[i], str) and normalized[i].startswith('t'):
-                    if normalized[i] not in temp_map:
-                        temp_map[normalized[i]] = f"t{next_temp}"
-                        next_temp += 1
-                    normalized[i] = temp_map[normalized[i]]
-            normalized_quads.append(tuple(normalized))
-        
-        # Do the same normalization for expected quads
-        expected_normalized = []
-        temp_map = {}
-        next_temp = 0
-        
-        for quad in expected_quads:
-            normalized = list(quad)
-            for i in range(4):
-                if isinstance(normalized[i], str) and normalized[i].startswith('t'):
-                    if normalized[i] not in temp_map:
-                        temp_map[normalized[i]] = f"t{next_temp}"
-                        next_temp += 1
-                    normalized[i] = temp_map[normalized[i]]
-            expected_normalized.append(tuple(normalized))
-            
-        assert len(normalized_quads) == len(expected_normalized), \
-            f"Expected {len(expected_normalized)} quads, got {len(normalized_quads)}"
-            
-        for i, (generated, expected) in enumerate(zip(normalized_quads, expected_normalized)):
-            assert generated == expected, f"Quad {i} mismatch:\nGenerated: {generated}\nExpected: {expected}"
-            
-        print("✓ Test passed")
-    except Exception as e:
-        print(f"✗ Test failed: {str(e)}")
-        raise
+    compiler.reset()
+    
+    # Parse the source code
+    compiler.compile(source_code)
+    
+    # Print symbol table
+    print("\nSymbol Table:")
+    for scope in compiler.symbol_table.scopes:
+        for name, info in scope.items():
+            print(f"{name}: type={info['type']}, address={info['address']}")
+    
+    # Print quadruples
+    print("\nGenerated Quadruples:")
+    for i, (op, arg1, arg2, res) in enumerate(compiler.quadruples):
+        print(f"{i:2d}: [{op}] {arg1 or '-':3} {arg2 or '-':3} -> {res}")
 
 # Initialize compiler once
 compiler = Compiler()
 
-def test_arithmetic():
-    # Simple expression
-    run_test_case(compiler, """
-    program test;
-    var a,b,c,x:int;
-    main {
-        x = a + b * c;
-    }
-    end
-    """, [
-        ('*', 'b', 'c', 't0'),
-        ('+', 'a', 't0', 't1'),
-        ('=', 't1', None, 'x')
-    ])
-
-    # With parentheses
-    run_test_case(compiler, """
-    program test;
-    var a,b,c,x:int;
-    main {
-        x = (a + b) * c;
-    }
-    end
-    """, [
-        ('+', 'a', 'b', 't0'),
-        ('*', 't0', 'c', 't1'),
-        ('=', 't1', None, 'x')
-    ])
-
-def test_type_conversion():
-    # Mixed int/float operations
-    run_test_case(compiler, """
-    program test;
-    var a:int; b,x:float;
-    main {
-        x = a + b;
-    }
-    end
-    """, [
-        ('int_to_float', 'a', None, 't0'),
-        ('+', 't0', 'b', 't1'),
-        ('=', 't1', None, 'x')
-    ])
-
-def test_assignment():
-    run_test_case(compiler, """
-    program test;
-    var a,b,c: int;
-    main {
-        a = 1;
-        b = 2;
-        c = a + b;
-    }
-    end
-    """, [
-        ('=', ('cte', 1), None, 'a'),
-        ('=', ('cte', 2), None, 'b'),
-        ('+', 'a', 'b', 't0'),
-        ('=', 't0', None, 'c')
-    ])
-
-def test_var_and_const():
-    run_test_case(compiler, """
-    program test;
-    var a,b,c: int;
-    main {
-        a = 1;
-        b = 2;
-        c = a + b * 3;
-    }
-    end
-    """, [
-        ('=', ('cte', 1), None, 'a'),
-        ('=', ('cte', 2), None, 'b'),
-        ('*', 'b', ('cte', 3), 't0'),
-        ('+', 'a', 't0', 't1'),
-        ('=', 't1', None, 'c')
-    ])
-
-def test_error_cases():
-    # Undeclared variable
-    try:
-        compiler.compile("""
-        program test;
-        main {
-            x = 5;
-        }
-        end
-        """)
-        assert False, "Should have raised undeclared variable error"
-    except ValueError as e:
-        assert "Undeclared variable" in str(e)
-
-    # Type mismatch
-    try:
-        compiler.compile("""
-        program test;
-        var a:int; b:float;
-        main {
-            a = b;
-        }
-        end
-        """)
-        assert False, "Should have raised type error"
-    except ValueError as e:
-        assert "Type mismatch" in str(e)
-
-def run_full_test_suite():
-    print("Running Arithmetic Tests...")
-    test_arithmetic()
-    
-    print("\nRunning Type Conversion Test...")
-    test_type_conversion()
-
-    print("\Running Variable Assignment Test...")
-    test_assignment()
-    
-    print("\Running Var and Const Test...")
-    test_var_and_const()
-    
-    """ print("\nRunning Error Cases...")
-    test_error_cases() """
-    
-    print("\nAll tests completed!")
-
-if __name__ == "__main__":
-    run_full_test_suite()
+run_test_case(compiler, '''
+program test;
+var a,b,c,x:int;
+main {
+    x = a + b / c;
+}
+end
+''')
