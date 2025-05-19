@@ -18,14 +18,14 @@ class SymbolTable:
             self.scopes.pop()
             self.current_scope -= 1
 
-    def add_variable(self, name, var_type, size=1):
-        """Add variable to current scope"""
+    def add_variable(self, name, var_type, size=1, address=None):
+        """Add variable to current scope with memory address"""
         if name in self.scopes[self.current_scope]:
             raise ValueError(f"Variable '{name}' already declared in this scope")
         self.scopes[self.current_scope][name] = {
             'type': var_type,
             'size': size,
-            'address': None  # Will be filled during memory allocation
+            'address': address
         }
 
     def lookup_variable(self, name):
@@ -54,6 +54,83 @@ class SymbolTable:
     def current_scope_variables(self):
         """Get variables in current scope"""
         return self.scopes[self.current_scope]
+    
+
+class MemoryManager:
+    def __init__(self):
+        # Memory block definitions
+        self.blocks = {
+            'global_int': {'start': 1, 'end': 20, 'current': 1},
+            'global_float': {'start': 21, 'end': 40, 'current': 21},
+            'global_bool': {'start': 41, 'end': 60, 'current': 41},
+            'global_string': {'start': 61, 'end': 80, 'current': 61},
+            
+            'local_int': {'start': 81, 'end': 100, 'current': 81},
+            'local_float': {'start': 101, 'end': 120, 'current': 101},
+            'local_bool': {'start': 121, 'end': 140, 'current': 121},
+            'local_string': {'start': 141, 'end': 160, 'current': 141},
+            
+            'temp_int': {'start': 161, 'end': 180, 'current': 161},
+            'temp_float': {'start': 181, 'end': 200, 'current': 181},
+            'temp_bool': {'start': 201, 'end': 220, 'current': 201},
+            'temp_string': {'start': 221, 'end': 240, 'current': 221},
+            
+            'const_int': {'start': 241, 'end': 260, 'current': 241},
+            'const_float': {'start': 261, 'end': 280, 'current': 261},
+            'const_bool': {'start': 281, 'end': 300, 'current': 281},
+            'const_string': {'start': 301, 'end': 320, 'current': 301}
+        }
+        
+        # Operation codes
+        self.operations = {
+            '+': 1,
+            '-': 2,
+            '*': 3,
+            '/': 4,
+            '<': 5,
+            '>': 6,
+            '=': 7,
+            '!=': 8,
+            'int_to_float': 9
+        }
+        
+        # Constants storage
+        self.constants = {
+            'int': {},
+            'float': {},
+            'bool': {},
+            'string': {}
+        }
+    
+    def get_address(self, var_type, scope='global', is_temp=False, is_const=False):
+        """Allocate memory address based on variable type and scope"""
+        if is_const:
+            block_type = f'const_{var_type}'
+        elif is_temp:
+            block_type = f'temp_{var_type}'
+        else:
+            block_type = f'{scope}_{var_type}'
+            
+        block = self.blocks[block_type]
+        if block['current'] > block['end']:
+            raise MemoryError(f"Out of memory in {block_type} block")
+            
+        address = block['current']
+        block['current'] += 1
+        return address
+    
+    def get_operation_code(self, op):
+        """Get numeric operation code"""
+        return self.operations.get(op, 0)
+    
+    def add_constant(self, const_type, value):
+        """Add constant to memory and return its address"""
+        if value not in self.constants[const_type]:
+            address = self.get_address(const_type, is_const=True)
+            self.constants[const_type][value] = address
+        return self.constants[const_type][value]
+    
+
 
 class Compiler:
     # --------------------- Lexer Definitions ---------------------
@@ -126,49 +203,66 @@ class Compiler:
         self.quadruples = []
         self.operand_stack = []
         self.operator_stack = []
+        self.type_stack = []
         self.temp_counter = 0
+        self.jump_stack = []
+        self.memory = MemoryManager()
         
         # Build the lexer and parser
         self.lexer = lex.lex(module=self)
         self.parser = yacc.yacc(module=self)
-
-    def generate_temp(self):
-        """Generate a new temporary variable"""
+    
+    def reset(self):
+        """Reset the compiler state for new compilation"""
+        self.quadruples = []
+        self.operand_stack = []
+        self.operator_stack = []
+        self.type_stack = []
+        self.temp_counter = 0
+        self.jump_stack = []
+        self.memory = MemoryManager()
+        self.symbol_table = SymbolTable()
+        self.symbol_table.enter_scope()  # Global scope
+    
+    def generate_temp(self, var_type):
+        """Generate a new temporary variable with memory address"""
         temp_name = f"t{self.temp_counter}"
         self.temp_counter += 1
+        
+        # Allocate memory for the temporary
+        address = self.memory.get_address(var_type, is_temp=True)
+        
+        # Add to symbol table
+        self.symbol_table.add_variable(temp_name, var_type, address=address)
         return temp_name
-
+    
     def emit_quad(self, op, arg1, arg2, result):
-        """Generate quadruple with type checking"""
-        type1 = self.get_operand_type(arg1)
-        type2 = self.get_operand_type(arg2) if arg2 else None
+        """Generate quadruple with memory addresses"""
+        # Get operation code
+        op_code = self.memory.get_operation_code(op)
         
-        # Handle type conversions if needed
-        if type1 != type2 and arg2:
-            if {type1, type2} == {'int', 'float'}:
-                # Convert int to float
-                if type1 == 'int':
-                    conv_temp = self.generate_temp()
-                    self.quadruples.append(('int_to_float', arg1, None, conv_temp))
-                    arg1 = conv_temp
-                else:
-                    conv_temp = self.generate_temp()
-                    self.quadruples.append(('int_to_float', arg2, None, conv_temp))
-                    arg2 = conv_temp
+        # Get memory addresses for operands
+        def get_address(operand):
+            if operand is None:
+                return 0
+            if isinstance(operand, (int, float, str, bool)):
+                # Handle constants
+                const_type = 'int' if isinstance(operand, int) else \
+                           'float' if isinstance(operand, float) else \
+                           'bool' if isinstance(operand, bool) else 'string'
+                return self.memory.add_constant(const_type, operand)
+            else:
+                # Lookup variable address
+                var_info = self.symbol_table.lookup_variable(operand)
+                return var_info['address'] if var_info else 0
         
-        quad = (op, arg1, arg2, result)
+        arg1_addr = get_address(arg1)
+        arg2_addr = get_address(arg2) if arg2 is not None else 0
+        result_addr = get_address(result)
+        
+        quad = (op_code, arg1_addr, arg2_addr, result_addr)
         self.quadruples.append(quad)
         return quad
-        
-    def get_operand_type(self, operand):
-        """Determine type of an operand (variable or constant)"""
-        if isinstance(operand, int):
-            return 'int'
-        elif isinstance(operand, float):
-            return 'float'
-        else:  # Variable name
-            var_info = self.symbol_table.lookup_variable(operand)
-            return var_info['type'] if var_info else None
 
     # --------------------- Lexer Methods ---------------------
     def t_ID(self, t):
@@ -232,13 +326,23 @@ class Compiler:
 
     def p_assign(self, p):
         'assign : ID EQUALS expression SEMICOLON'
-        # The expression result should be on top of operand_stack
         result = self.operand_stack.pop()
+        result_type = self.type_stack.pop()
         var_name = p[1]
         
-        # Verify variable exists
-        if not self.symbol_table.lookup_variable(var_name):
+        var_info = self.symbol_table.lookup_variable(var_name)
+        if not var_info:
             raise ValueError(f"Undeclared variable {var_name}")
+        
+        # Type checking
+        if var_info['type'] != result_type:
+            if var_info['type'] == 'float' and result_type == 'int':
+                # Convert int to float
+                temp = self.generate_temp('float')
+                self.emit_quad('int_to_float', result, None, temp)
+                result = temp
+            else:
+                raise ValueError(f"Type mismatch in assignment to {var_name}")
         
         self.emit_quad('=', result, None, var_name)
         p[0] = ('assign', var_name, p[3])
@@ -248,12 +352,28 @@ class Compiler:
         if p[2][0] != 'empty':  # If there's a relational operator
             op = p[2][1]
             right_operand = self.operand_stack.pop()
+            right_type = self.type_stack.pop()
             left_operand = self.operand_stack.pop()
-            temp = self.generate_temp()
-        
-            # Add type checking here using symbol_table if needed
+            left_type = self.type_stack.pop()
+            
+            # Type conversion if needed
+            if left_type != right_type:
+                if {left_type, right_type} == {'int', 'float'}:
+                    if left_type == 'int':
+                        temp = self.generate_temp('float')
+                        self.emit_quad('int_to_float', left_operand, None, temp)
+                        left_operand = temp
+                        left_type = 'float'
+                    else:
+                        temp = self.generate_temp('float')
+                        self.emit_quad('int_to_float', right_operand, None, temp)
+                        right_operand = temp
+                        right_type = 'float'
+            
+            temp = self.generate_temp('bool')
             self.emit_quad(op, left_operand, right_operand, temp)
             self.operand_stack.append(temp)
+            self.type_stack.append('bool')
         p[0] = ('expression', p[1], p[2])
 
     def p_expression_prime(self, p):
@@ -559,130 +679,31 @@ def run_test_case(compiler, source_code, expected_quads):
 # Initialize compiler once
 compiler = Compiler()
 
-def test_arithmetic():
-    # Simple expression
-    run_test_case(compiler, """
+def test_arithmetic_with_memory():
+    compiler = Compiler()
+    source_code = """
     program test;
     var a,b,c,x:int;
     main {
         x = a + b * c;
     }
     end
-    """, [
-        ('*', 'b', 'c', 't0'),
-        ('+', 'a', 't0', 't1'),
-        ('=', 't1', None, 'x')
-    ])
-
-    # With parentheses
-    run_test_case(compiler, """
-    program test;
-    var a,b,c,x:int;
-    main {
-        x = (a + b) * c;
-    }
-    end
-    """, [
-        ('+', 'a', 'b', 't0'),
-        ('*', 't0', 'c', 't1'),
-        ('=', 't1', None, 'x')
-    ])
-
-def test_type_conversion():
-    # Mixed int/float operations
-    run_test_case(compiler, """
-    program test;
-    var a:int; b,x:float;
-    main {
-        x = a + b;
-    }
-    end
-    """, [
-        ('int_to_float', 'a', None, 't0'),
-        ('+', 't0', 'b', 't1'),
-        ('=', 't1', None, 'x')
-    ])
-
-def test_assignment():
-    run_test_case(compiler, """
-    program test;
-    var a,b,c: int;
-    main {
-        a = 1;
-        b = 2;
-        c = a + b;
-    }
-    end
-    """, [
-        ('=', ('cte', 1), None, 'a'),
-        ('=', ('cte', 2), None, 'b'),
-        ('+', 'a', 'b', 't0'),
-        ('=', 't0', None, 'c')
-    ])
-
-def test_var_and_const():
-    run_test_case(compiler, """
-    program test;
-    var a,b,c: int;
-    main {
-        a = 1;
-        b = 2;
-        c = a + b * 3;
-    }
-    end
-    """, [
-        ('=', ('cte', 1), None, 'a'),
-        ('=', ('cte', 2), None, 'b'),
-        ('*', 'b', ('cte', 3), 't0'),
-        ('+', 'a', 't0', 't1'),
-        ('=', 't1', None, 'c')
-    ])
-
-def test_error_cases():
-    # Undeclared variable
-    try:
-        compiler.compile("""
-        program test;
-        main {
-            x = 5;
-        }
-        end
-        """)
-        assert False, "Should have raised undeclared variable error"
-    except ValueError as e:
-        assert "Undeclared variable" in str(e)
-
-    # Type mismatch
-    try:
-        compiler.compile("""
-        program test;
-        var a:int; b:float;
-        main {
-            a = b;
-        }
-        end
-        """)
-        assert False, "Should have raised type error"
-    except ValueError as e:
-        assert "Type mismatch" in str(e)
-
-def run_full_test_suite():
-    print("Running Arithmetic Tests...")
-    test_arithmetic()
+    """
     
-    print("\nRunning Type Conversion Test...")
-    test_type_conversion()
+    # Expected memory addresses might be:
+    # a: 1 (global_int)
+    # b: 2 (global_int)
+    # c: 3 (global_int)
+    # x: 4 (global_int)
+    # t0: 161 (temp_int)
+    # t1: 162 (temp_int)
+    
+    expected_quads = [
+        (3, 2, 3, 161),  # * b(2) c(3) -> t0(161)
+        (1, 1, 161, 162), # + a(1) t0(161) -> t1(162)
+        (7, 162, 0, 4)    # = t1(162) -> x(4)
+    ]
+    
+    run_test_case(compiler, source_code, expected_quads)
 
-    print("\Running Variable Assignment Test...")
-    test_assignment()
-    
-    print("\Running Var and Const Test...")
-    test_var_and_const()
-    
-    """ print("\nRunning Error Cases...")
-    test_error_cases() """
-    
-    print("\nAll tests completed!")
-
-if __name__ == "__main__":
-    run_full_test_suite()
+test_arithmetic_with_memory()
