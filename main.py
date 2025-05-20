@@ -105,6 +105,9 @@ class MemoryManager:
             '>': 6,
             '=': 7,  # Assignment
             '!=': 8,
+            'GOTOF': 9,  # Jump if false
+            'GOTO': 10,   # Unconditional jump
+            'label': 100  # Special code for labels
         }
 
     def allocate(self, var_type, scope='global', is_temp=False, is_const=False):
@@ -213,6 +216,7 @@ class Compiler:
         self.quadruples = []
         self.operand_stack = []
         self.operator_stack = []
+        self.jump_stack = []  # Stack for tracking jumps
         self.temp_counter = 0
         
         # Build the lexer and parser
@@ -284,8 +288,7 @@ class Compiler:
             'addr_quad': addr_quad
         })
         
-        return name_quad
-    
+        return len(self.quadruples) - 1  # Return index of the generated quadruple
     
     def get_operand_address(self, operand):
         """Get memory address of an operand"""
@@ -377,9 +380,12 @@ class Compiler:
 
     # --------------------- Parser Methods ---------------------
     def p_program(self, p):
-        '''program : PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END'''
+        '''program : PROGRAM ID SEMICOLON new_global_scope prog_vars prog_funcs MAIN body END'''
+        p[0] = ('program', p[2], p[5], p[6], p[8])
+
+    def p_new_global_scope(self, p): # Entering global scope before processing variables
+        "new_global_scope :"
         self.symbol_table.enter_scope()  # Global scope
-        p[0] = ('program', p[2], p[4], p[5], p[7])
 
     def p_prog_vars(self, p):
         '''prog_vars : vars
@@ -422,13 +428,15 @@ class Compiler:
     def p_expression(self, p):
         'expression : exp expression_prime'
         if p[2][0] != 'empty':  # If there's a relational operator
-            op = p[2][1]
+            rel_op = p[2][1]
             right_operand = self.operand_stack.pop()
             left_operand = self.operand_stack.pop()
-            temp = self.generate_temp('bool')  # Explicit bool for comparisons
+            temp = self.generate_temp('bool')
             
-            self.emit_quad(op, left_operand, right_operand, temp)
+            # Generate the relation quadruple with correct order
+            self.emit_quad(rel_op, left_operand, right_operand, temp)
             self.operand_stack.append(temp)
+            
         p[0] = ('expression', p[1], p[2])
 
     def p_expression_prime(self, p):
@@ -436,34 +444,37 @@ class Compiler:
                         | LESS exp
                         | NOT_EQUALS exp
                         | empty'''
-        if len(p) == 3:  # Casos con operador
+        if len(p) == 3:  # Cases with operator
             p[0] = ('relop', p[1], p[2])
-        else:  # Caso empty
+        else:  # Empty case
             p[0] = p[1]
 
     def p_cte(self, p):
         '''cte : CTE_INT
                 | CTE_FLOAT'''
         p[0] = ('cte', p[1])
+        # Push constant to operand stack
+        if isinstance(p[1], int) or isinstance(p[1], float):
+            self.operand_stack.append(p[1])
 
     def p_funcs(self, p):
-        'funcs : VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON'
+        '''funcs : VOID ID LPAREN funcs_prime RPAREN LBRACKET new_scope funcs_vars body RBRACKET SEMICOLON'''
         func_name = p[2]
         return_type = p[1]
-        
-        # Add function to symbol table
         self.symbol_table.add_function(func_name, return_type)
-        self.symbol_table.enter_scope()  # Function scope
-        
-        # Process parameters (from funcs_prime) and variables (from funcs_vars)
-        p[0] = ('funcs', func_name, p[4], p[7], p[8])
-        
-        self.symbol_table.exit_scope()  # Exit function scope
+        p[0] = ('funcs', func_name, p[4], p[8], p[9])
+        self.symbol_table.exit_scope()  # Now exits at the right time
+
+    def p_new_scope(self, p):
+        "new_scope :"
+        self.symbol_table.enter_scope()
 
     def p_funcs_prime(self, p):
         '''funcs_prime : ID COLON type more_funcs
                     | empty'''
         if len(p) == 5:
+            # Add parameter to current scope
+            self.symbol_table.add_variable(p[1], p[3][1])
             p[0] = ('funcs_prime', p[1], p[3], p[4])
         else:
             p[0] = p[1]
@@ -492,7 +503,7 @@ class Compiler:
     def p_exp(self, p):
         'exp : term exp_prime'
         if p[2][0] != 'empty':  # If there's + or -
-            op = p[2][0]
+            op = p[2][1]
             right_operand = self.operand_stack.pop()
             left_operand = self.operand_stack.pop()
             temp = self.generate_temp()
@@ -506,14 +517,14 @@ class Compiler:
                     | MINUS term exp_prime
                     | empty'''
         if len(p) == 4:
-            p[0] = (p[1], p[2], p[3])
+            p[0] = (p[1], p[1], p[3])  # Store operator
         else:
             p[0] = p[1]
 
     def p_term(self, p):
         'term : factor term_prime'
         if p[2][0] != 'empty':  # If there's * or /
-            op = p[2][0]
+            op = p[2][1]
             right_operand = self.operand_stack.pop()
             left_operand = self.operand_stack.pop()
             temp = self.generate_temp()
@@ -527,7 +538,7 @@ class Compiler:
                     | DIVIDE factor term_prime
                     | empty'''
         if len(p) == 4:
-            p[0] = (p[1], p[2], p[3])
+            p[0] = (p[1], p[1], p[3])  # Store operator
         else:
             p[0] = p[1]
 
@@ -546,15 +557,15 @@ class Compiler:
     def p_factor_prime(self, p):
         '''factor_prime : ID
                         | cte'''
-        if p[1][0] == 'ID':
-            # Verify variable exists in symbol table
-            var_info = self.symbol_table.lookup_variable(p[1])
-            if not var_info:
-                raise ValueError(f"Undeclared variable {p[1]}")
-            self.operand_stack.append(p[1])
-        else:  # Constant
-            self.operand_stack.append(p[1])
-        p[0] = ('factor_prime', p[1])
+        if p[1][0] == 'cte':
+            # The constant value was already pushed to operand_stack in p_cte
+            p[0] = ('factor_prime', p[1])
+        else:  # ID
+            var_name = p[1]
+            if not self.symbol_table.lookup_variable(var_name):
+                raise ValueError(f"Undeclared variable {var_name}")
+            self.operand_stack.append(var_name)
+            p[0] = ('factor_prime', var_name)
 
     def p_vars(self, p):
         'vars : VAR vars_prime'
@@ -568,7 +579,7 @@ class Compiler:
             # Add all variables in declaration list
             variables = [p[1]] + self._flatten_id_list(p[2])
             for var_name in variables:
-                self.symbol_table.add_variable(var_name, var_type)
+                self.add_variable(var_name, var_type)  # Using new add_variable method
             p[0] = ('vars_prime', variables, var_type, p[6])
         else:
             p[0] = p[1]
@@ -576,7 +587,7 @@ class Compiler:
     def _flatten_id_list(self, id_node):
         """Helper to convert ('id', 'a', ('id', 'b', ...)) to ['a', 'b', ...]"""
         result = []
-        while id_node[0] == 'id':
+        while id_node and id_node[0] == 'id':
             result.append(id_node[1])
             id_node = id_node[2]
         return result
@@ -618,17 +629,76 @@ class Compiler:
 
     def p_cycle(self, p):
         'cycle : WHILE LPAREN expression RPAREN DO body SEMICOLON'
+        
+        # Create start label
+        start_label = f"L{len(self.quadruples)}"
+        self.emit_quad('label', None, None, start_label)
+        
+        # Condition result should be on top of operand stack
+        condition_result = self.operand_stack.pop()
+        
+        # Generate GOTOF
+        end_label = f"L{len(self.quadruples)+1}"
+        gotof_index = self.emit_quad('GOTOF', condition_result, None, end_label)
+        
+        # Process loop body
+        # p[6] contains the body
+        
+        # Jump back to start
+        self.emit_quad('GOTO', None, None, start_label)
+        
+        # Place end label
+        self.emit_quad('label', None, None, end_label)
+        
         p[0] = ('while_loop', p[3], p[6])
 
+    def p_begin_if(self, p):
+        'begin_if :'
+        # The condition result should be on top of the operand stack
+        condition_result = self.operand_stack.pop()
+        
+        # Generate GOTOF with a temporary end label
+        false_label = f"L{len(self.quadruples)+1}"
+        gotof_index = self.emit_quad('GOTOF', condition_result, None, false_label)
+        
+        # Push the quad index to jump stack to fill it later
+        self.jump_stack.append(gotof_index)
+
     def p_condition(self, p):
-        'condition : IF LPAREN expression RPAREN body else_condition SEMICOLON'
-        p[0] = ('condition', p[3], p[5], p[6])
+        'condition : IF LPAREN expression RPAREN begin_if body else_condition SEMICOLON'
+        
+        # Handle else if present - need to update jumps
+        if p[7][0] != 'empty':
+            # Pop the GOTO quad index that was added at end of "then" block
+            goto_index = self.jump_stack.pop()
+            
+            # Place end label where it should go after ELSE body
+            end_label = f"L{len(self.quadruples)}"
+            self.emit_quad('label', None, None, end_label)
+            
+        else:
+            # No else - place label immediately after IF body
+            false_label = f"L{len(self.quadruples)}"
+            self.emit_quad('label', None, None, false_label)
+        
+        p[0] = ('condition', p[3], p[6], p[7])
+
+    def p_begin_else(self, p):
+        'begin_else :'
+        # Generate GOTO to skip else section
+        end_label = f"L{len(self.quadruples)+1}"
+        goto_index = self.emit_quad('GOTO', None, None, end_label)
+        self.jump_stack.append(goto_index)
+        
+        # Add label for ELSE section (target of the GOTOF from IF condition)
+        false_label = f"L{len(self.quadruples)}"
+        self.emit_quad('label', None, None, false_label)
 
     def p_else_condition(self, p):
-        '''else_condition : ELSE body
+        '''else_condition : ELSE begin_else body
                         | empty'''
-        if len(p) == 3:
-            p[0] = ('else', p[2])
+        if len(p) == 4:
+            p[0] = ('else', p[3])
         else:
             p[0] = p[1]
 
@@ -696,7 +766,9 @@ run_test_case(compiler, '''
 program pelos;
 var x, y, z: int;
 main {
-    z = x + y * 2;
+    while (x>y) do {
+        x = y-z+1;
+    };
 }
 end
 ''')
