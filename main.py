@@ -2,31 +2,44 @@ import ply.lex as lex
 import ply.yacc as yacc
 
 class SymbolTable:
-    def __init__(self):
+    def __init__(self, memory_manager):
         self.scopes = [{}]  # Stack of scopes (global scope by default)
         self.functions = {}  # Function directory
         self.current_scope = 0  # Points to current scope in stack
+        self.memory_manager = memory_manager  # Reference to memory manager
 
     def enter_scope(self):
         """Create a new scope level"""
         self.scopes.append({})
         self.current_scope += 1
+        if self.current_scope > 1:  # Skip for global scope
+            self.memory_manager.push_context()
 
     def exit_scope(self):
         """Leave current scope"""
         if self.current_scope > 0:  # Don't pop global scope
             self.scopes.pop()
             self.current_scope -= 1
+            if self.current_scope > 0:  # Skip for global scope
+                self.memory_manager.pop_context()
 
     def add_variable(self, name, var_type, size=1):
-        """Add variable to current scope"""
+        """Add variable to current scope with memory allocation"""
         if name in self.scopes[self.current_scope]:
             raise ValueError(f"Variable '{name}' already declared in this scope")
+        
+        # Determine memory segment (global or local)
+        segment = 'global' if self.current_scope == 0 else 'local'
+        
+        # Get memory address for this variable
+        address = self.memory_manager.get_address(segment, var_type)
+        
         self.scopes[self.current_scope][name] = {
             'type': var_type,
             'size': size,
-            'address': None  # Will be filled during memory allocation
+            'address': address
         }
+        return address
 
     def lookup_variable(self, name):
         """Find variable in current or enclosing scopes"""
@@ -54,6 +67,142 @@ class SymbolTable:
     def current_scope_variables(self):
         """Get variables in current scope"""
         return self.scopes[self.current_scope]
+    
+class MemoryManager:
+    # Memory segment boundaries
+    MEMORY_MAP = {
+        'global': {
+            'int': (1, 50),
+            'float': (51, 100)
+        },
+        'local': {
+            'int': (101, 150),
+            'float': (151, 200)
+        },
+        'temp': {
+            'int': (201, 250),
+            'float': (251, 300),
+            'bool': (301, 350)
+        },
+        'constant': {
+            'int': (351, 400),
+            'float': (401, 450),
+            'string': (451, 500)
+        }
+    }
+    
+    # Operation codes
+    OPERATIONS = {
+        '+': 1,
+        '-': 2,
+        '*': 3,
+        '/': 4,
+        '<': 5,
+        '>': 6,
+        '=': 7,
+        '!=': 8,
+        'GOTO': 9,
+        'GOTOF': 10,
+        'PRINT': 11
+    }
+    
+    def __init__(self):
+        # Initialize memory counters for each segment
+        self.counters = {}
+        for segment, types in self.MEMORY_MAP.items():
+            self.counters[segment] = {}
+            for type_name, (start, _) in types.items():
+                self.counters[segment][type_name] = start
+        
+        # Constant value to address mapping for reuse
+        self.constant_map = {
+            'int': {},
+            'float': {},
+            'string': {}
+        }
+        
+        # Stack for local memory contexts (for function calls)
+        self.context_stack = []
+        
+        # Virtual memory storage (address -> value)
+        self.memory = {}
+    
+    def get_address(self, segment, data_type, value=None):
+        """Get a memory address for a variable or constant."""
+        if segment == 'constant':
+            # For constants, check if we've already assigned an address
+            if value in self.constant_map[data_type]:
+                return self.constant_map[data_type][value]
+            
+        # Get the current counter for this segment/type
+        counter = self.counters[segment][data_type]
+        
+        # Check if we've reached the limit for this segment
+        start, end = self.MEMORY_MAP[segment][data_type]
+        if counter > end:
+            raise MemoryError(f"Out of memory in {segment} {data_type} segment")
+        
+        # Increment the counter for next allocation
+        self.counters[segment][data_type] += 1
+        
+        if segment == 'constant':
+            # Store the mapping from value to address for constants
+            self.constant_map[data_type][value] = counter
+        
+        return counter
+    
+    def get_operation_code(self, operation):
+        """Get the numeric code for an operation."""
+        return self.OPERATIONS.get(operation, 0)
+    
+    def reset(self):
+        """Reset memory manager state."""
+        # Reset counters to initial values
+        for segment, types in self.MEMORY_MAP.items():
+            for type_name, (start, _) in types.items():
+                self.counters[segment][type_name] = start
+        
+        # Clear constant mappings
+        self.constant_map = {
+            'int': {},
+            'float': {},
+            'string': {}
+        }
+        
+        # Clear context stack
+        self.context_stack = []
+        
+        # Clear memory
+        self.memory = {}
+    
+    def push_context(self):
+        """Push current local counters to stack (for function calls)."""
+        self.context_stack.append(self.counters['local'].copy())
+        
+        # Reset local counters to initial values
+        for type_name, (start, _) in self.MEMORY_MAP['local'].items():
+            self.counters['local'][type_name] = start
+    
+    def pop_context(self):
+        """Restore previous local counters (when returning from function)."""
+        if self.context_stack:
+            self.counters['local'] = self.context_stack.pop()
+            
+    def get_address_type(self, address):
+        """Get the segment and type for a given address."""
+        for segment, types in self.MEMORY_MAP.items():
+            for type_name, (start, end) in types.items():
+                if start <= address <= end:
+                    return segment, type_name
+        return None, None
+    
+    def store_value(self, address, value):
+        """Store a value at a memory address."""
+        self.memory[address] = value
+    
+    def get_value(self, address):
+        """Get the value at a memory address."""
+        return self.memory.get(address)
 
 class Compiler:
     # --------------------- Lexer Definitions ---------------------
@@ -121,30 +270,166 @@ class Compiler:
     t_ignore = ' \t'
 
     def __init__(self):
+        # Initialize memory manager
+        self.memory_manager = MemoryManager()
+        
         # Initialize compiler state
-        self.symbol_table = SymbolTable()
+        self.symbol_table = SymbolTable(self.memory_manager)
         self.quadruples = []
+        self.memory_quadruples = []  # New list for memory-based quadruples
         self.operand_stack = []
+        self.type_stack = []         # Stack to track operand types
+        self.address_stack = []      # Stack to track operand addresses
         self.operator_stack = []
         self.temp_counter = 0
-        self.jump_stack = []    # Stack for managing jump addresses
+        self.jump_stack = []
         
         # Build the lexer and parser
         self.lexer = lex.lex(module=self)
         self.parser = yacc.yacc(module=self)
 
-    def generate_temp(self):
-        """Generate a new temporary variable"""
+    def generate_temp(self, result_type):
+        """Generate a new temporary variable with memory allocation"""
         temp_name = f"t{self.temp_counter}"
         self.temp_counter += 1
-        return temp_name
+        
+        # Allocate memory for this temporary
+        temp_address = self.memory_manager.get_address('temp', result_type)
+        
+        # Add to symbol table for reference
+        self.symbol_table.scopes[self.symbol_table.current_scope][temp_name] = {
+            'type': result_type,
+            'size': 1,
+            'address': temp_address
+        }
+        
+        return temp_name, temp_address
+    
+    def get_result_type(self, left_type, right_type, operator):
+        """Determine the result type of an operation based on operand types"""
+        # Simplified type checking rules
+        if operator in ['<', '>', '!=']:
+            return 'bool'
+        
+        if left_type == 'float' or right_type == 'float':
+            return 'float'
+        
+        return 'int'
 
-    # Fix for the emit_quad method - remove automatic type conversion
     def emit_quad(self, op, arg1, arg2, result):
-        """Generate quadruple without implicit type conversion"""
+        """Generate both standard and memory-based quadruples"""
+        # Standard quadruple (using variable names/values)
         quad = (op, arg1, arg2, result)
         self.quadruples.append(quad)
-        return len(self.quadruples) - 1  # Return index of the created quadruple
+        
+        # Memory-based quadruple (using memory addresses)
+        op_code = self.memory_manager.get_operation_code(op)
+        
+        # Get address for arg1
+        if arg1 is None:
+            arg1_addr = 0
+        elif isinstance(arg1, (int, float, str)) and not isinstance(arg1, bool):
+            # If it's a literal constant
+            if isinstance(arg1, int) or isinstance(arg1, float) or (isinstance(arg1, str) and arg1.startswith('"')):
+                # Determine type of constant
+                if isinstance(arg1, int):
+                    arg1_addr = self.memory_manager.get_address('constant', 'int', arg1)
+                    self.memory_manager.store_value(arg1_addr, arg1)
+                elif isinstance(arg1, float):
+                    arg1_addr = self.memory_manager.get_address('constant', 'float', arg1)
+                    self.memory_manager.store_value(arg1_addr, arg1)
+                else:  # string
+                    arg1_addr = self.memory_manager.get_address('constant', 'string', arg1)
+                    self.memory_manager.store_value(arg1_addr, arg1)
+            else:
+                # It's a variable name - get address from symbol table
+                var_info = self.symbol_table.lookup_variable(arg1)
+                if var_info:
+                    arg1_addr = var_info['address']
+                else:
+                    # Handle temporary variables that might not be in symbol table yet
+                    if arg1.startswith('t'):
+                        arg1_addr = self.memory_manager.get_address('temp', 'int')  # Default to int
+                    else:
+                        arg1_addr = 0
+                        print(f"Warning: Unknown variable {arg1} in quadruple")
+        else:
+            arg1_addr = 0
+        
+        # Similar logic for arg2
+        if arg2 is None:
+            arg2_addr = 0
+        elif isinstance(arg2, (int, float, str)) and not isinstance(arg2, bool):
+            # If it's a literal constant
+            if isinstance(arg2, int) or isinstance(arg2, float) or (isinstance(arg2, str) and arg2.startswith('"')):
+                # Determine type of constant
+                if isinstance(arg2, int):
+                    arg2_addr = self.memory_manager.get_address('constant', 'int', arg2)
+                    self.memory_manager.store_value(arg2_addr, arg2)
+                elif isinstance(arg2, float):
+                    arg2_addr = self.memory_manager.get_address('constant', 'float', arg2)
+                    self.memory_manager.store_value(arg2_addr, arg2)
+                else:  # string
+                    arg2_addr = self.memory_manager.get_address('constant', 'string', arg2)
+                    self.memory_manager.store_value(arg2_addr, arg2)
+            else:
+                # It's a variable name - get address from symbol table
+                var_info = self.symbol_table.lookup_variable(arg2)
+                if var_info:
+                    arg2_addr = var_info['address']
+                else:
+                    # Handle temporary variables
+                    if arg2.startswith('t'):
+                        arg2_addr = self.memory_manager.get_address('temp', 'int')  # Default to int
+                    else:
+                        arg2_addr = 0
+                        print(f"Warning: Unknown variable {arg2} in quadruple")
+        else:
+            arg2_addr = 0
+        
+        # Get address for result
+        if result is None:
+            result_addr = 0
+        elif isinstance(result, int) and op in ['GOTO', 'GOTOF']:
+            # Jump address (for GOTO/GOTOF)
+            result_addr = result
+        elif isinstance(result, str):
+            # Check if it's a variable name
+            var_info = self.symbol_table.lookup_variable(result)
+            if var_info:
+                result_addr = var_info['address']
+            else:
+                # Handle temporary variables
+                if result.startswith('t'):
+                    # Find or create temporary in symbol table
+                    temp_type = 'int'  # Default, should be determined based on operation
+                    if arg1 and arg2:
+                        # Try to determine result type based on operands
+                        type1 = self.get_operand_type(arg1)
+                        type2 = self.get_operand_type(arg2)
+                        if type1 == 'float' or type2 == 'float':
+                            temp_type = 'float'
+                    
+                    # Get memory address for this temporary
+                    result_addr = self.memory_manager.get_address('temp', temp_type)
+                    
+                    # Add to symbol table for future reference
+                    self.symbol_table.scopes[self.symbol_table.current_scope][result] = {
+                        'type': temp_type,
+                        'size': 1,
+                        'address': result_addr
+                    }
+                else:
+                    result_addr = 0
+                    print(f"Warning: Unknown result variable {result} in quadruple")
+        else:
+            result_addr = 0
+        
+        # Create memory quadruple
+        memory_quad = (op_code, arg1_addr, arg2_addr, result_addr)
+        self.memory_quadruples.append(memory_quad)
+        
+        return len(self.quadruples) - 1
         
     def get_operand_type(self, operand):
         """Determine type of an operand (variable or constant)"""
@@ -228,13 +513,21 @@ class Compiler:
 
     def p_assign(self, p):
         'assign : ID EQUALS expression SEMICOLON'
-        # The expression result should be on top of operand_stack
+        # Get expression result info from stacks
         result = self.operand_stack.pop()
+        result_type = self.type_stack.pop()
+        result_addr = self.address_stack.pop()
+        
         var_name = p[1]
         
         # Verify variable exists
-        if not self.symbol_table.lookup_variable(var_name):
+        var_info = self.symbol_table.lookup_variable(var_name)
+        if not var_info:
             raise ValueError(f"Undeclared variable {var_name}")
+        
+        # Check type compatibility for assignment
+        if var_info['type'] == 'int' and result_type == 'float':
+            print(f"Warning: Possible loss of precision assigning float to int in {var_name}")
         
         self.emit_quad('=', result, None, var_name)
         p[0] = ('assign', var_name, p[3])
@@ -244,12 +537,26 @@ class Compiler:
         if p[2][0] != 'empty':  # If there's a relational operator
             op = p[2][1]
             right_operand = self.operand_stack.pop()
+            right_type = self.type_stack.pop()
+            right_addr = self.address_stack.pop()
+            
             left_operand = self.operand_stack.pop()
-            temp = self.generate_temp()
-        
-            # Add type checking here using symbol_table if needed
-            self.emit_quad(op, left_operand, right_operand, temp)
-            self.operand_stack.append(temp)
+            left_type = self.type_stack.pop()
+            left_addr = self.address_stack.pop()
+            
+            # Determine result type for comparison operations
+            result_type = 'bool'  # Comparisons always return boolean
+            
+            # Generate temporary variable with correct type
+            temp_name, temp_addr = self.generate_temp(result_type)
+            
+            # Generate the comparison quadruple
+            self.emit_quad(op, left_operand, right_operand, temp_name)
+            
+            # Push the result onto the stacks
+            self.operand_stack.append(temp_name)
+            self.type_stack.append(result_type)
+            self.address_stack.append(temp_addr)
         p[0] = ('expression', p[1], p[2])
 
     def p_expression_prime(self, p):
@@ -257,9 +564,11 @@ class Compiler:
                         | LESS exp
                         | NOT_EQUALS exp
                         | empty'''
-        if len(p) == 3:  # Casos con operador
+        if len(p) == 3:  # Case with operator
+            # Get the right operand info from stacks (from exp)
+            # We don't pop here, as that's done in p_expression
             p[0] = ('relop', p[1], p[2])
-        else:  # Caso empty
+        else:  # Empty case
             p[0] = p[1]
 
     def p_cte(self, p):
@@ -334,12 +643,31 @@ class Compiler:
         'process_operation :'
         if self.operator_stack:
             operator = self.operator_stack.pop()
-            right_operand = self.operand_stack.pop()
-            left_operand = self.operand_stack.pop()
-            temp = self.generate_temp()
             
-            self.emit_quad(operator, left_operand, right_operand, temp)
-            self.operand_stack.append(temp)
+            # Get right operand information
+            right_operand = self.operand_stack.pop()
+            right_type = self.type_stack.pop()
+            right_addr = self.address_stack.pop()
+            
+            # Get left operand information
+            left_operand = self.operand_stack.pop()
+            left_type = self.type_stack.pop()
+            left_addr = self.address_stack.pop()
+            
+            # Determine result type
+            result_type = self.get_result_type(left_type, right_type, operator)
+            
+            # Generate temporary variable with proper type
+            temp_name, temp_addr = self.generate_temp(result_type)
+            
+            # Generate quadruple
+            self.emit_quad(operator, left_operand, right_operand, temp_name)
+            
+            # Push result back onto stacks
+            self.operand_stack.append(temp_name)
+            self.type_stack.append(result_type)
+            self.address_stack.append(temp_addr)
+        
         p[0] = ('process_operation',)
 
     def p_term(self, p):
@@ -375,13 +703,35 @@ class Compiler:
         if isinstance(p[1], tuple) and p[1][0] == 'cte':
             # Handle constant
             value = p[1][1]
+            
+            # Determine type and get memory address
+            if isinstance(value, int):
+                addr = self.memory_manager.get_address('constant', 'int', value)
+                self.memory_manager.store_value(addr, value)
+                data_type = 'int'
+            elif isinstance(value, float):
+                addr = self.memory_manager.get_address('constant', 'float', value)
+                self.memory_manager.store_value(addr, value)
+                data_type = 'float'
+            
+            # Push to stacks
             self.operand_stack.append(value)
+            self.type_stack.append(data_type)
+            self.address_stack.append(addr)
+            
         else:  # ID
             # Verify variable exists in symbol table
-            var_info = self.symbol_table.lookup_variable(p[1])
+            var_name = p[1]
+            var_info = self.symbol_table.lookup_variable(var_name)
+            
             if not var_info:
-                raise ValueError(f"Undeclared variable {p[1]}")
-            self.operand_stack.append(p[1])
+                raise ValueError(f"Undeclared variable {var_name}")
+            
+            # Push to stacks
+            self.operand_stack.append(var_name)
+            self.type_stack.append(var_info['type'])
+            self.address_stack.append(var_info['address'])
+            
         p[0] = ('factor_prime', p[1])
 
     def p_vars(self, p):
@@ -393,10 +743,13 @@ class Compiler:
                     | empty'''
         if len(p) == 7:  # Variable declaration
             var_type = p[4][1]  # Extract type from ('type', 'int/float')
+            
             # Add all variables in declaration list
             variables = [p[1]] + self._flatten_id_list(p[2])
             for var_name in variables:
+                # Allocate memory and add to symbol table
                 self.symbol_table.add_variable(var_name, var_type)
+                
             p[0] = ('vars_prime', variables, var_type, p[6])
         else:
             p[0] = p[1]
@@ -449,10 +802,16 @@ class Compiler:
     # Action after evaluating the condition in if statement
     def p_if_condition(self, p):
         'if_condition :'
-        # Get the result of the condition expression
+        # Get condition result from stacks
         result = self.operand_stack.pop()
+        result_type = self.type_stack.pop()
+        result_addr = self.address_stack.pop()
         
-        # Generate quad to jump if false
+        # Verify result is boolean
+        if result_type != 'bool':
+            print(f"Warning: Non-boolean condition in if statement")
+        
+        # Generate quad to jump if false - use the address directly
         goto_f_index = self.emit_quad('GOTOF', result, None, None)
         
         # Push jump index to jump stack
@@ -499,10 +858,16 @@ class Compiler:
     # Action after evaluating the condition in while loop
     def p_while_condition(self, p):
         'while_condition :'
-        # Get the result of the condition
+        # Get condition result from stacks
         result = self.operand_stack.pop()
+        result_type = self.type_stack.pop()
+        result_addr = self.address_stack.pop()
         
-        # Generate quad to jump if false
+        # Verify result is boolean
+        if result_type != 'bool':
+            print(f"Warning: Non-boolean condition in while loop")
+        
+        # Generate quad to jump if false - use the address directly
         goto_f_index = self.emit_quad('GOTOF', result, None, None)
         
         # Push jump index to jump stack
@@ -585,14 +950,18 @@ class Compiler:
     
     def reset(self):
         """Reset the compiler state for new compilation"""
+        self.memory_manager.reset()
         self.quadruples = []
+        self.memory_quadruples = []
         self.operand_stack = []
+        self.type_stack = []
+        self.address_stack = []
         self.operator_stack = []
         self.jump_stack = []
-        self.temp_counter = 0  # Reset temporary counter
-        # Reset symbol table if needed
-        self.symbol_table = SymbolTable()
-        self.symbol_table.enter_scope()  # Global scope
+        self.temp_counter = 0
+        
+        # Reset symbol table
+        self.symbol_table = SymbolTable(self.memory_manager)
     
 
 def run_test_case(compiler, source_code, case_name=""):
@@ -603,45 +972,42 @@ def run_test_case(compiler, source_code, case_name=""):
     try:
         compiler.compile(source_code)
         
-        print("Generated Quadruples:") 
+        print("\nStandard Quadruples:") 
         for i, quad in enumerate(compiler.quadruples):
+            print(f"{i}: {quad}")
+            
+        print("\nMemory-Based Quadruples:")
+        for i, quad in enumerate(compiler.memory_quadruples):
             print(f"{i}: {quad}")
     except Exception as e:
         print(f"Compilation error: {e}")
 
-# Initialize compiler once
 compiler = Compiler()
 
 run_test_case(compiler, '''
-program arithmetic;
-var a, b, c: int;
-    x, y, z: float;
-main {
-    c=a+b-1;
-    z=x*y/2;
-}
-end
-''')
-
-run_test_case(compiler, '''
-program testif;
+program testifelse;
 var a, b, c: int;
 main {
-    if (a < b) {
-        a = c + b;
+    if (a < 8) {
+        a = a + 1;
+    }
+    else {
+        c = 3;
     };
 }
 end
 ''')
 
 run_test_case(compiler, '''
-program ifelse;
+program testifelse;
 var a, b, c: int;
 main {
-    if (a > b) {
-        a = b - c;
-    } else {
-        b = a + c;
+    a = 5;
+    if (a < 8) {
+        a = a + 1;
+    }
+    else {
+        c = 3;
     };
 }
 end
@@ -651,8 +1017,9 @@ run_test_case(compiler, '''
 program testwhile;
 var a, b, c: int;
 main {
-    while (a > b) do {
-        b = a + c * 2;
+    b = 2;
+    while (b < 5) do {
+        b = b + 1;
     };
 }
 end
@@ -665,6 +1032,17 @@ main {
     a = 5;
     b = 2;
     c = a / b;
+
+    if (a < 8) {
+        a = a + 1;
+    }
+    else {
+        c = 3;
+    };
+    
+    while (b < 5) do {
+        b = b + 1;
+    };
 }
 end
 ''')
