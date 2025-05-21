@@ -1046,3 +1046,12 @@ main {
 }
 end
 ''')
+
+run_test_case(compiler, '''
+program typecheck;
+var a: int;
+main {
+    a = 5.1;
+}
+end
+''')
