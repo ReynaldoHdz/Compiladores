@@ -55,95 +55,6 @@ class SymbolTable:
         """Get variables in current scope"""
         return self.scopes[self.current_scope]
 
-class MemoryManager:
-    def __init__(self):
-        # Define memory ranges (20 addresses per type)
-        self.memory_ranges = {
-            # Global variables
-            'global_int': (1000, 1019),
-            'global_float': (1020, 1039),
-            'global_bool': (1040, 1059),
-            'global_string': (1060, 1079),
-            
-            # Local variables
-            'local_int': (2000, 2019),
-            'local_float': (2020, 2039),
-            'local_bool': (2040, 2059),
-            'local_string': (2060, 2079),
-            
-            # Temporary variables
-            'temp_int': (3000, 3019),
-            'temp_float': (3020, 3039),
-            'temp_bool': (3040, 3059),
-            'temp_string': (3060, 3079),
-            
-            # Constants
-            'const_int': (4000, 4019),
-            'const_float': (4020, 4039),
-            'const_bool': (4040, 4059),
-            'const_string': (4060, 4079),
-        }
-        
-        # Current pointers for each memory range
-        self.current_pointers = {key: start for key, (start, end) in self.memory_ranges.items()}
-        
-        # Dictionary to store constant values
-        self.constants = {
-            'int': {},
-            'float': {},
-            'bool': {},
-            'string': {}
-        }
-        
-        # Operation codes
-        self.operation_codes = {
-            '+': 1,
-            '-': 2,
-            '*': 3,
-            '/': 4,
-            '<': 5,
-            '>': 6,
-            '=': 7,  # Assignment
-            '!=': 8,
-            'GOTOF': 9,  # Jump if false
-            'GOTO': 10,   # Unconditional jump
-            'label': 100  # Special code for labels
-        }
-
-    def allocate(self, var_type, scope='global', is_temp=False, is_const=False):
-        """Allocate memory address based on type and scope"""
-        if is_const:
-            prefix = 'const'
-        elif is_temp:
-            prefix = 'temp'
-        else:
-            prefix = scope
-        
-        memory_key = f"{prefix}_{var_type}"
-        
-        if memory_key not in self.memory_ranges:
-            raise ValueError(f"Invalid memory type: {memory_key}")
-            
-        current = self.current_pointers[memory_key]
-        end = self.memory_ranges[memory_key][1]
-        
-        if current > end:
-            raise MemoryError(f"Out of memory for {memory_key}")
-            
-        self.current_pointers[memory_key] += 1
-        return current
-    
-    def get_constant_address(self, value, var_type):
-        """Get or create address for a constant value"""
-        if value not in self.constants[var_type]:
-            address = self.allocate(var_type, is_const=True)
-            self.constants[var_type][value] = address
-        return self.constants[var_type][value]
-    
-    def get_operation_code(self, op):
-        """Get numeric operation code"""
-        return self.operation_codes.get(op, 0)
-
 class Compiler:
     # --------------------- Lexer Definitions ---------------------
     # Reserved words (class variable)
@@ -212,106 +123,29 @@ class Compiler:
     def __init__(self):
         # Initialize compiler state
         self.symbol_table = SymbolTable()
-        self.memory_manager = MemoryManager()
         self.quadruples = []
         self.operand_stack = []
         self.operator_stack = []
-        self.jump_stack = []  # Stack for tracking jumps
         self.temp_counter = 0
+        self.jump_stack = []    # Stack for managing jump addresses
         
         # Build the lexer and parser
         self.lexer = lex.lex(module=self)
         self.parser = yacc.yacc(module=self)
 
-    def generate_temp(self, var_type=None):
-        """Generate a new temporary variable with memory address"""
+    def generate_temp(self):
+        """Generate a new temporary variable"""
         temp_name = f"t{self.temp_counter}"
         self.temp_counter += 1
-        
-        # If type not provided, try to infer from operand stack
-        if var_type is None and self.operand_stack:
-            # Get types of top two operands (if available)
-            op1_type = self.get_operand_type(self.operand_stack[-1])
-            if len(self.operand_stack) > 1:
-                op2_type = self.get_operand_type(self.operand_stack[-2])
-                # Use the "higher" type (float > int)
-                var_type = 'float' if 'float' in {op1_type, op2_type} else op1_type
-            else:
-                var_type = op1_type
-        
-        # Default to int if type still can't be determined
-        if var_type is None:
-            var_type = 'int'
-        
-        # Allocate memory for the temporary
-        address = self.memory_manager.allocate(var_type, is_temp=True)
-        
-        # Add to symbol table
-        self.symbol_table.add_variable(temp_name, var_type)
-        self.symbol_table.current_scope_variables()[temp_name]['address'] = address
-        
         return temp_name
 
+    # Fix for the emit_quad method - remove automatic type conversion
     def emit_quad(self, op, arg1, arg2, result):
-        """Generate quadruple with memory addresses"""
-        # Get types
-        type1 = self.get_operand_type(arg1)
-        type2 = self.get_operand_type(arg2) if arg2 else None
+        """Generate quadruple without implicit type conversion"""
+        quad = (op, arg1, arg2, result)
+        self.quadruples.append(quad)
+        return len(self.quadruples) - 1  # Return index of the created quadruple
         
-        # Get addresses
-        addr1 = self.get_operand_address(arg1)
-        addr2 = self.get_operand_address(arg2) if arg2 else None
-        result_addr = self.get_operand_address(result)
-        
-        # Handle type conversions if needed
-        if type1 != type2 and arg2:
-            if {type1, type2} == {'int', 'float'}:
-                # Convert int to float
-                if type1 == 'int':
-                    conv_temp = self.generate_temp('float')
-                    self.quadruples.append(('int_to_float', addr1, None, self.get_operand_address(conv_temp)))
-                    addr1 = self.get_operand_address(conv_temp)
-                else:
-                    conv_temp = self.generate_temp('float')
-                    self.quadruples.append(('int_to_float', addr2, None, self.get_operand_address(conv_temp)))
-                    addr2 = self.get_operand_address(conv_temp)
-        
-        # Get operation code
-        op_code = self.memory_manager.get_operation_code(op)
-        
-        # Create both versions of the quadruple
-        name_quad = (op, arg1, arg2, result)
-        addr_quad = (op_code, addr1, addr2, result_addr)
-        
-        self.quadruples.append({
-            'name_quad': name_quad,
-            'addr_quad': addr_quad
-        })
-        
-        return len(self.quadruples) - 1  # Return index of the generated quadruple
-    
-    def get_operand_address(self, operand):
-        """Get memory address of an operand"""
-        if operand is None:
-            return None
-            
-        # Handle constants
-        if isinstance(operand, int):
-            return self.memory_manager.get_constant_address(operand, 'int')
-        elif isinstance(operand, float):
-            return self.memory_manager.get_constant_address(operand, 'float')
-        elif isinstance(operand, bool):
-            return self.memory_manager.get_constant_address(operand, 'bool')
-        elif isinstance(operand, str) and operand.startswith('"'):
-            return self.memory_manager.get_constant_address(operand, 'string')
-        
-        # Handle variables
-        var_info = self.symbol_table.lookup_variable(operand)
-        if var_info:
-            return var_info['address']
-        
-        return None
-    
     def get_operand_type(self, operand):
         """Determine type of an operand (variable or constant)"""
         if operand is None:
@@ -320,34 +154,17 @@ class Compiler:
             return 'int'
         elif isinstance(operand, float):
             return 'float'
-        elif isinstance(operand, bool):
-            return 'bool'
-        elif isinstance(operand, str):
-            if operand.startswith('"'):
-                return 'string'
-            # It's a variable name
+        else:  # Variable name
             var_info = self.symbol_table.lookup_variable(operand)
             return var_info['type'] if var_info else None
-        return None
 
-    # Modify add_variable to allocate memory
-    def add_variable(self, name, var_type, size=1):
-        """Add variable to current scope with memory allocation"""
-        if name in self.symbol_table.current_scope_variables():
-            raise ValueError(f"Variable '{name}' already declared in this scope")
-        
-        # Determine scope ('global' or 'local')
-        scope = 'global' if self.symbol_table.current_scope == 0 else 'local'
-        
-        # Allocate memory
-        address = self.memory_manager.allocate(var_type, scope)
-        
-        # Add to symbol table
-        self.symbol_table.current_scope_variables()[name] = {
-            'type': var_type,
-            'size': size,
-            'address': address
-        }
+    def fill_quad(self, quad_index, value):
+        """Fill a previously generated quadruple with a jump address"""
+        if 0 <= quad_index < len(self.quadruples):
+            op, arg1, arg2, _ = self.quadruples[quad_index]
+            self.quadruples[quad_index] = (op, arg1, arg2, value)
+        else:
+            raise IndexError(f"Quadruple index {quad_index} out of range.")
 
     # --------------------- Lexer Methods ---------------------
     def t_ID(self, t):
@@ -380,12 +197,9 @@ class Compiler:
 
     # --------------------- Parser Methods ---------------------
     def p_program(self, p):
-        '''program : PROGRAM ID SEMICOLON new_global_scope prog_vars prog_funcs MAIN body END'''
-        p[0] = ('program', p[2], p[5], p[6], p[8])
-
-    def p_new_global_scope(self, p): # Entering global scope before processing variables
-        "new_global_scope :"
+        '''program : PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END'''
         self.symbol_table.enter_scope()  # Global scope
+        p[0] = ('program', p[2], p[4], p[5], p[7])
 
     def p_prog_vars(self, p):
         '''prog_vars : vars
@@ -428,15 +242,14 @@ class Compiler:
     def p_expression(self, p):
         'expression : exp expression_prime'
         if p[2][0] != 'empty':  # If there's a relational operator
-            rel_op = p[2][1]
+            op = p[2][1]
             right_operand = self.operand_stack.pop()
             left_operand = self.operand_stack.pop()
-            temp = self.generate_temp('bool')
-            
-            # Generate the relation quadruple with correct order
-            self.emit_quad(rel_op, left_operand, right_operand, temp)
+            temp = self.generate_temp()
+        
+            # Add type checking here using symbol_table if needed
+            self.emit_quad(op, left_operand, right_operand, temp)
             self.operand_stack.append(temp)
-            
         p[0] = ('expression', p[1], p[2])
 
     def p_expression_prime(self, p):
@@ -444,37 +257,34 @@ class Compiler:
                         | LESS exp
                         | NOT_EQUALS exp
                         | empty'''
-        if len(p) == 3:  # Cases with operator
+        if len(p) == 3:  # Casos con operador
             p[0] = ('relop', p[1], p[2])
-        else:  # Empty case
+        else:  # Caso empty
             p[0] = p[1]
 
     def p_cte(self, p):
         '''cte : CTE_INT
                 | CTE_FLOAT'''
         p[0] = ('cte', p[1])
-        # Push constant to operand stack
-        if isinstance(p[1], int) or isinstance(p[1], float):
-            self.operand_stack.append(p[1])
 
     def p_funcs(self, p):
-        '''funcs : VOID ID LPAREN funcs_prime RPAREN LBRACKET new_scope funcs_vars body RBRACKET SEMICOLON'''
+        'funcs : VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON'
         func_name = p[2]
         return_type = p[1]
+        
+        # Add function to symbol table
         self.symbol_table.add_function(func_name, return_type)
-        p[0] = ('funcs', func_name, p[4], p[8], p[9])
-        self.symbol_table.exit_scope()  # Now exits at the right time
-
-    def p_new_scope(self, p):
-        "new_scope :"
-        self.symbol_table.enter_scope()
+        self.symbol_table.enter_scope()  # Function scope
+        
+        # Process parameters (from funcs_prime) and variables (from funcs_vars)
+        p[0] = ('funcs', func_name, p[4], p[7], p[8])
+        
+        self.symbol_table.exit_scope()  # Exit function scope
 
     def p_funcs_prime(self, p):
         '''funcs_prime : ID COLON type more_funcs
                     | empty'''
         if len(p) == 5:
-            # Add parameter to current scope
-            self.symbol_table.add_variable(p[1], p[3][1])
             p[0] = ('funcs_prime', p[1], p[3], p[4])
         else:
             p[0] = p[1]
@@ -502,43 +312,47 @@ class Compiler:
 
     def p_exp(self, p):
         'exp : term exp_prime'
-        if p[2][0] != 'empty':  # If there's + or -
-            op = p[2][1]
-            right_operand = self.operand_stack.pop()
-            left_operand = self.operand_stack.pop()
-            temp = self.generate_temp()
-            
-            self.emit_quad(op, left_operand, right_operand, temp)
-            self.operand_stack.append(temp)
         p[0] = ('exp', p[1], p[2])
 
     def p_exp_prime(self, p):
-        '''exp_prime : PLUS term exp_prime
-                    | MINUS term exp_prime
+        '''exp_prime : PLUS save_operator term process_operation exp_prime
+                    | MINUS save_operator term process_operation exp_prime
                     | empty'''
-        if len(p) == 4:
-            p[0] = (p[1], p[1], p[3])  # Store operator
+        if len(p) == 6:
+            p[0] = (p[1], p[3], p[5])
         else:
             p[0] = p[1]
 
-    def p_term(self, p):
-        'term : factor term_prime'
-        if p[2][0] != 'empty':  # If there's * or /
-            op = p[2][1]
+    # Add embedded action helpers for arithmetic operations
+    def p_save_operator(self, p):
+        'save_operator :'
+        # Save the operator to operator stack
+        self.operator_stack.append(p[-1])
+        p[0] = ('save_operator',)
+
+    def p_process_operation(self, p):
+        'process_operation :'
+        if self.operator_stack:
+            operator = self.operator_stack.pop()
             right_operand = self.operand_stack.pop()
             left_operand = self.operand_stack.pop()
             temp = self.generate_temp()
             
-            self.emit_quad(op, left_operand, right_operand, temp)
+            self.emit_quad(operator, left_operand, right_operand, temp)
             self.operand_stack.append(temp)
+        p[0] = ('process_operation',)
+
+    def p_term(self, p):
+        'term : factor term_prime'
         p[0] = ('term', p[1], p[2])
 
+    
     def p_term_prime(self, p):
-        '''term_prime : TIMES factor term_prime
-                    | DIVIDE factor term_prime
+        '''term_prime : TIMES save_operator factor process_operation term_prime
+                    | DIVIDE save_operator factor process_operation term_prime
                     | empty'''
-        if len(p) == 4:
-            p[0] = (p[1], p[1], p[3])  # Store operator
+        if len(p) == 6:
+            p[0] = (p[1], p[3], p[5])
         else:
             p[0] = p[1]
 
@@ -554,18 +368,21 @@ class Compiler:
         else:
             p[0] = ('factor', p[1])
 
+    # Fix for factor handling
     def p_factor_prime(self, p):
         '''factor_prime : ID
                         | cte'''
-        if p[1][0] == 'cte':
-            # The constant value was already pushed to operand_stack in p_cte
-            p[0] = ('factor_prime', p[1])
+        if isinstance(p[1], tuple) and p[1][0] == 'cte':
+            # Handle constant
+            value = p[1][1]
+            self.operand_stack.append(value)
         else:  # ID
-            var_name = p[1]
-            if not self.symbol_table.lookup_variable(var_name):
-                raise ValueError(f"Undeclared variable {var_name}")
-            self.operand_stack.append(var_name)
-            p[0] = ('factor_prime', var_name)
+            # Verify variable exists in symbol table
+            var_info = self.symbol_table.lookup_variable(p[1])
+            if not var_info:
+                raise ValueError(f"Undeclared variable {p[1]}")
+            self.operand_stack.append(p[1])
+        p[0] = ('factor_prime', p[1])
 
     def p_vars(self, p):
         'vars : VAR vars_prime'
@@ -579,7 +396,7 @@ class Compiler:
             # Add all variables in declaration list
             variables = [p[1]] + self._flatten_id_list(p[2])
             for var_name in variables:
-                self.add_variable(var_name, var_type)  # Using new add_variable method
+                self.symbol_table.add_variable(var_name, var_type)
             p[0] = ('vars_prime', variables, var_type, p[6])
         else:
             p[0] = p[1]
@@ -587,7 +404,7 @@ class Compiler:
     def _flatten_id_list(self, id_node):
         """Helper to convert ('id', 'a', ('id', 'b', ...)) to ['a', 'b', ...]"""
         result = []
-        while id_node and id_node[0] == 'id':
+        while id_node[0] == 'id':
             result.append(id_node[1])
             id_node = id_node[2]
         return result
@@ -627,80 +444,108 @@ class Compiler:
                             | CTE_STRING'''
         p[0] = ('more_print_prime', p[1])
 
-    def p_cycle(self, p):
-        'cycle : WHILE LPAREN expression RPAREN DO body SEMICOLON'
+    # -------------------- New embedded actions for control flow --------------------
+    
+    # Action after evaluating the condition in if statement
+    def p_if_condition(self, p):
+        'if_condition :'
+        # Get the result of the condition expression
+        result = self.operand_stack.pop()
         
-        # Create start label
-        start_label = f"L{len(self.quadruples)}"
-        self.emit_quad('label', None, None, start_label)
+        # Generate quad to jump if false
+        goto_f_index = self.emit_quad('GOTOF', result, None, None)
         
-        # Condition result should be on top of operand stack
-        condition_result = self.operand_stack.pop()
+        # Push jump index to jump stack
+        self.jump_stack.append(goto_f_index)
         
-        # Generate GOTOF
-        end_label = f"L{len(self.quadruples)+1}"
-        gotof_index = self.emit_quad('GOTOF', condition_result, None, end_label)
-        
-        # Process loop body
-        # p[6] contains the body
-        
-        # Jump back to start
-        self.emit_quad('GOTO', None, None, start_label)
-        
-        # Place end label
-        self.emit_quad('label', None, None, end_label)
-        
-        p[0] = ('while_loop', p[3], p[6])
+        p[0] = ('if_condition',)
 
-    def p_begin_if(self, p):
-        'begin_if :'
-        # The condition result should be on top of the operand stack
-        condition_result = self.operand_stack.pop()
+    # Action at the end of the 'then' block in if statement
+    def p_if_end(self, p):
+        'if_end :'
+        # For if-else, generate jump to skip else block
+        goto_index = self.emit_quad('GOTO', None, None, None)
         
-        # Generate GOTOF with a temporary end label
-        false_label = f"L{len(self.quadruples)+1}"
-        gotof_index = self.emit_quad('GOTOF', condition_result, None, false_label)
+        # Get the GOTOF index to fill
+        false_jump = self.jump_stack.pop()
         
-        # Push the quad index to jump stack to fill it later
-        self.jump_stack.append(gotof_index)
-
-    def p_condition(self, p):
-        'condition : IF LPAREN expression RPAREN begin_if body else_condition SEMICOLON'
+        # Fill the false jump to point to next quad (else or after if)
+        self.fill_quad(false_jump, len(self.quadruples))
         
-        # Handle else if present - need to update jumps
-        if p[7][0] != 'empty':
-            # Pop the GOTO quad index that was added at end of "then" block
-            goto_index = self.jump_stack.pop()
-            
-            # Place end label where it should go after ELSE body
-            end_label = f"L{len(self.quadruples)}"
-            self.emit_quad('label', None, None, end_label)
-            
-        else:
-            # No else - place label immediately after IF body
-            false_label = f"L{len(self.quadruples)}"
-            self.emit_quad('label', None, None, false_label)
-        
-        p[0] = ('condition', p[3], p[6], p[7])
-
-    def p_begin_else(self, p):
-        'begin_else :'
-        # Generate GOTO to skip else section
-        end_label = f"L{len(self.quadruples)+1}"
-        goto_index = self.emit_quad('GOTO', None, None, end_label)
+        # Push the GOTO index for later filling (after else block)
         self.jump_stack.append(goto_index)
         
-        # Add label for ELSE section (target of the GOTOF from IF condition)
-        false_label = f"L{len(self.quadruples)}"
-        self.emit_quad('label', None, None, false_label)
+        p[0] = ('if_end',)
+
+    # Action at the very end of if-else statement
+    def p_if_else_end(self, p):
+        'if_else_end :'
+        # Get the GOTO index from the end of 'then' block
+        end_jump = self.jump_stack.pop()
+        
+        # Fill it with current quad position (after the else block)
+        self.fill_quad(end_jump, len(self.quadruples))
+        
+        p[0] = ('if_else_end',)
+
+    # Action at the beginning of a while loop
+    def p_while_start(self, p):
+        'while_start :'
+        # Push current quad position to mark loop start
+        self.jump_stack.append(len(self.quadruples))
+        
+        p[0] = ('while_start',)
+
+    # Action after evaluating the condition in while loop
+    def p_while_condition(self, p):
+        'while_condition :'
+        # Get the result of the condition
+        result = self.operand_stack.pop()
+        
+        # Generate quad to jump if false
+        goto_f_index = self.emit_quad('GOTOF', result, None, None)
+        
+        # Push jump index to jump stack
+        self.jump_stack.append(goto_f_index)
+        
+        p[0] = ('while_condition',)
+
+    # Action at the end of while loop body
+    def p_while_end(self, p):
+        'while_end :'
+        # Get the GOTOF index
+        false_jump = self.jump_stack.pop()
+        
+        # Get the loop start position
+        start_position = self.jump_stack.pop()
+        
+        # Generate jump back to loop start
+        self.emit_quad('GOTO', None, None, start_position)
+        
+        # Fill the false jump to point after the loop
+        self.fill_quad(false_jump, len(self.quadruples))
+        
+        p[0] = ('while_end',)
+
+    # -------------------- Update control flow rules with embedded actions --------------------
+    
+    def p_cycle(self, p):
+        'cycle : WHILE while_start LPAREN expression RPAREN while_condition DO body while_end SEMICOLON'
+        p[0] = ('while_loop', p[4], p[8])
+
+    def p_condition(self, p):
+        '''condition : IF LPAREN expression RPAREN if_condition body if_end else_condition if_else_end SEMICOLON'''
+        p[0] = ('condition', p[3], p[6], p[8])
 
     def p_else_condition(self, p):
-        '''else_condition : ELSE begin_else body
+        '''else_condition : ELSE body
                         | empty'''
-        if len(p) == 4:
-            p[0] = ('else', p[3])
+        if len(p) == 3:
+            p[0] = ('else', p[2])
         else:
             p[0] = p[1]
+    
+    # -------------------- End of control flow updates --------------------
 
     def p_f_call(self, p):
         'f_call : ID LPAREN f_call_prime RPAREN SEMICOLON'
@@ -743,32 +588,83 @@ class Compiler:
         self.quadruples = []
         self.operand_stack = []
         self.operator_stack = []
+        self.jump_stack = []
         self.temp_counter = 0  # Reset temporary counter
         # Reset symbol table if needed
         self.symbol_table = SymbolTable()
         self.symbol_table.enter_scope()  # Global scope
     
 
-def run_test_case(compiler, source_code):
-    print(f"\nTesting: {source_code.strip()}")
+def run_test_case(compiler, source_code, case_name=""):
+    print(f"\nTesting: {case_name}")
+    print(f"Source code: {source_code.strip()}")
     compiler.reset()  # Reset compiler state before each test
     
-    compiler.compile(source_code)
+    try:
+        compiler.compile(source_code)
         
-    print("Generated Quadruples:") 
-    for i, quad in enumerate(compiler.quadruples):
-        print(f"{i}: {quad}")
+        print("Generated Quadruples:") 
+        for i, quad in enumerate(compiler.quadruples):
+            print(f"{i}: {quad}")
+    except Exception as e:
+        print(f"Compilation error: {e}")
 
 # Initialize compiler once
 compiler = Compiler()
 
 run_test_case(compiler, '''
-program pelos;
-var x, y, z: int;
+program arithmetic;
+var a, b, c: int;
+    x, y, z: float;
 main {
-    while (x>y) do {
-        x = y-z+1;
+    c=a+b-1;
+    z=x*y/2;
+}
+end
+''')
+
+run_test_case(compiler, '''
+program testif;
+var a, b, c: int;
+main {
+    if (a < b) {
+        a = c + b;
     };
+}
+end
+''')
+
+run_test_case(compiler, '''
+program ifelse;
+var a, b, c: int;
+main {
+    if (a > b) {
+        a = b - c;
+    } else {
+        b = a + c;
+    };
+}
+end
+''')
+
+run_test_case(compiler, '''
+program testwhile;
+var a, b, c: int;
+main {
+    while (a > b) do {
+        b = a + c * 2;
+    };
+}
+end
+''')
+
+run_test_case(compiler, '''
+program testarithmetic;
+var a, b, c: int;
+main {
+    a = 5;
+    b = 2;
+    c = a / b;
 }
 end
 ''')
