@@ -10,6 +10,15 @@ Actualmente incluye:
 
 - Soporte para estructuras fundamentales del lenguaje
 
+- Analizador semántico básico
+
+- Reservación simple de recursos
+
+## Requisitos
+
+- Python 3.13
+- PLY (`pip install ply`)
+
 ## Características Implementadas
 
 ### Léxico
@@ -38,7 +47,16 @@ Delimitadores: ;, :, ,, (), {}, []
 
 \<Cuerpo> -> { \<Sentencias> }
 
-## Requisitos
+### Semántica
 
-- Python 3.13
-- PLY (`pip install ply`)
+- Validación de variables declaradas
+
+- Type Checking
+
+- Generación de cuádruplos (normales y en base a memoria)
+
+- Flujos de control lineales y no lineales
+
+### Memoria
+
+- Reservación simple de recursos
