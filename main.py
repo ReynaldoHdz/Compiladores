@@ -325,105 +325,47 @@ class Compiler:
         # Memory-based quadruple (using memory addresses)
         op_code = self.memory_manager.get_operation_code(op)
         
-        # Get address for arg1
-        if arg1 is None:
-            arg1_addr = 0
-        elif isinstance(arg1, (int, float, str)) and not isinstance(arg1, bool):
-            # If it's a literal constant
-            if isinstance(arg1, int) or isinstance(arg1, float) or (isinstance(arg1, str) and arg1.startswith('"')):
-                # Determine type of constant
-                if isinstance(arg1, int):
-                    arg1_addr = self.memory_manager.get_address('constant', 'int', arg1)
-                    self.memory_manager.store_value(arg1_addr, arg1)
-                elif isinstance(arg1, float):
-                    arg1_addr = self.memory_manager.get_address('constant', 'float', arg1)
-                    self.memory_manager.store_value(arg1_addr, arg1)
-                else:  # string
-                    arg1_addr = self.memory_manager.get_address('constant', 'string', arg1)
-                    self.memory_manager.store_value(arg1_addr, arg1)
-            else:
-                # It's a variable name - get address from symbol table
-                var_info = self.symbol_table.lookup_variable(arg1)
+        # Helper function to get address for an argument (arg1, arg2, or result)
+        def get_operand_address(operand, is_result_operand=False):
+            if operand is None:
+                return 0
+
+            # 1. Handle special integer cases (e.g., jump addresses for GOTO/GOTOF)
+            # This is only relevant for the 'result' operand in specific operations.
+            if is_result_operand and isinstance(operand, int) and op in ['GOTO', 'GOTOF']:
+                return operand
+            
+            # 2. Handle string operands (could be variable names or string literals)
+            if isinstance(operand, str):
+                var_info = self.symbol_table.lookup_variable(operand)
                 if var_info:
-                    arg1_addr = var_info['address']
+                    # It's a variable or temporary variable
+                    return var_info['address']
                 else:
-                    # Handle temporary variables that might not be in symbol table yet
-                    if arg1.startswith('t'):
-                        arg1_addr = self.memory_manager.get_address('temp', 'int')  # Default to int
-                    else:
-                        arg1_addr = 0
-                        print(f"Warning: Unknown variable {arg1} in quadruple")
-        else:
-            arg1_addr = 0
-        
-        # Similar logic for arg2
-        if arg2 is None:
-            arg2_addr = 0
-        elif isinstance(arg2, (int, float, str)) and not isinstance(arg2, bool):
-            # If it's a literal constant
-            if isinstance(arg2, int) or isinstance(arg2, float) or (isinstance(arg2, str) and arg2.startswith('"')):
-                # Determine type of constant
-                if isinstance(arg2, int):
-                    arg2_addr = self.memory_manager.get_address('constant', 'int', arg2)
-                    self.memory_manager.store_value(arg2_addr, arg2)
-                elif isinstance(arg2, float):
-                    arg2_addr = self.memory_manager.get_address('constant', 'float', arg2)
-                    self.memory_manager.store_value(arg2_addr, arg2)
-                else:  # string
-                    arg2_addr = self.memory_manager.get_address('constant', 'string', arg2)
-                    self.memory_manager.store_value(arg2_addr, arg2)
-            else:
-                # It's a variable name - get address from symbol table
-                var_info = self.symbol_table.lookup_variable(arg2)
-                if var_info:
-                    arg2_addr = var_info['address']
-                else:
-                    # Handle temporary variables
-                    if arg2.startswith('t'):
-                        arg2_addr = self.memory_manager.get_address('temp', 'int')  # Default to int
-                    else:
-                        arg2_addr = 0
-                        print(f"Warning: Unknown variable {arg2} in quadruple")
-        else:
-            arg2_addr = 0
-        
-        # Get address for result
-        if result is None:
-            result_addr = 0
-        elif isinstance(result, int) and op in ['GOTO', 'GOTOF']:
-            # Jump address (for GOTO/GOTOF)
-            result_addr = result
-        elif isinstance(result, str):
-            # Check if it's a variable name
-            var_info = self.symbol_table.lookup_variable(result)
-            if var_info:
-                result_addr = var_info['address']
-            else:
-                # Handle temporary variables
-                if result.startswith('t'):
-                    # Find or create temporary in symbol table
-                    temp_type = 'int'  # Default, should be determined based on operation
-                    if arg1 and arg2:
-                        # Try to determine result type based on operands
-                        type1 = self.get_operand_type(arg1)
-                        type2 = self.get_operand_type(arg2)
-                        if type1 == 'float' or type2 == 'float':
-                            temp_type = 'float'
-                    
-                    # Get memory address for this temporary
-                    result_addr = self.memory_manager.get_address('temp', temp_type)
-                    
-                    # Add to symbol table for future reference
-                    self.symbol_table.scopes[self.symbol_table.current_scope][result] = {
-                        'type': temp_type,
-                        'size': 1,
-                        'address': result_addr
-                    }
-                else:
-                    result_addr = 0
-                    print(f"Warning: Unknown result variable {result} in quadruple")
-        else:
-            result_addr = 0
+                    # It's a string literal (e.g., "hello")
+                    addr = self.memory_manager.get_address('constant', 'string', operand)
+                    self.memory_manager.store_value(addr, operand)
+                    return addr
+            
+            # 3. Handle numeric constants (int or float literals)
+            elif isinstance(operand, (int, float)) and not isinstance(operand, bool):
+                if isinstance(operand, int):
+                    addr = self.memory_manager.get_address('constant', 'int', operand)
+                    self.memory_manager.store_value(addr, operand)
+                    return addr
+                elif isinstance(operand, float):
+                    addr = self.memory_manager.get_address('constant', 'float', operand)
+                    self.memory_manager.store_value(addr, operand)
+                    return addr
+            
+            # Default for unhandled types or errors
+            # print(f"Warning: Unhandled operand type for '{operand}' ({type(operand)})")
+            return 0
+
+        # Get addresses for all operands using the helper function
+        arg1_addr = get_operand_address(arg1)
+        arg2_addr = get_operand_address(arg2)
+        result_addr = get_operand_address(result, is_result_operand=True) # Pass flag for special result handling
         
         # Create memory quadruple
         memory_quad = (op_code, arg1_addr, arg2_addr, result_addr)
@@ -780,22 +722,63 @@ class Compiler:
         p[0] = ('print', p[3])
 
     def p_print_prime(self, p):
-        '''print_prime : expression more_print
-                    | CTE_STRING more_print'''
-        p[0] = ('print_prime', p[1], p[2])
+        '''print_prime : expression
+                        | CTE_STRING'''
+        if p[1] == ('empty',):  # Handle the empty case for print_prime if it was allowed
+            p[0] = ('print_prime', p[1])
+            return
+
+        if isinstance(p[1], tuple) and p[1][0] == 'expression':
+            # This means an expression was just parsed, its result is on the stack
+            operand = self.operand_stack.pop()
+            self.type_stack.pop() # Pop the type as well
+            self.address_stack.pop() # Pop the address as well
+            self.emit_quad('PRINT', None, None, operand)
+        else:
+            # It's a CTE_STRING
+            self.emit_quad('PRINT', None, None, p[1]) # Pass the string literal directly
+
+        p[0] = ('print_prime', p[1])
 
     def p_more_print(self, p):
-        '''more_print : COMMA more_print_prime more_print
+        '''more_print : COMMA print_item more_print
                     | empty'''
+        # The logic for emitting quadruples for subsequent print items needs to be here.
+        # When `print_item` is processed, it will put the operand on the stack.
+        # This rule then needs to consume it and generate the PRINT quad.
         if len(p) == 4:
+            # 'print_item' will have already pushed its result to the stacks
+            # So, we just need to generate the PRINT quad for it
+            operand = self.operand_stack.pop()
+            self.type_stack.pop()
+            self.address_stack.pop()
+            self.emit_quad('PRINT', None, None, operand)
             p[0] = ('more_print', p[2], p[3])
         else:
-            p[0] = p[1]
+            p[0] = p[1] # 'empty'
 
-    def p_more_print_prime(self, p):
-        '''more_print_prime : expression
-                            | CTE_STRING'''
-        p[0] = ('more_print_prime', p[1])
+    def p_print_item(self, p):
+        '''print_item : expression
+                      | CTE_STRING'''
+        # This new rule will handle both expression and string for print_prime and more_print
+        # It's responsible for pushing the operand onto the stack for expressions,
+        # or for handling the string literal directly if it's not an expression.
+        if isinstance(p[1], tuple) and p[1][0] == 'expression':
+            # The 'expression' rule itself already pushes the result onto the stacks.
+            # So, we don't need to do anything further here for expressions, just pass it up.
+            p[0] = ('print_item', p[1])
+        else:
+            # It's a CTE_STRING. Push its value (the string content) onto the operand stack
+            # and provide a dummy type/address if needed for consistency with other operations.
+            # For a print string, we directly use the string value as the operand.
+            # No need to allocate constant memory for print string in this simplified example
+            # but in a real compiler, you might. For now, just pass the string.
+            self.operand_stack.append(p[1])
+            self.type_stack.append('string') # Assuming 'string' type for string literals
+            string_addr = self.memory_manager.get_address('constant', 'string', p[1])
+            self.memory_manager.store_value(string_addr, p[1])
+            self.address_stack.append(string_addr)
+            p[0] = ('print_item', p[1])
 
     # -------------------- New embedded actions for control flow --------------------
     
@@ -985,73 +968,27 @@ def run_test_case(compiler, source_code, case_name=""):
 compiler = Compiler()
 
 run_test_case(compiler, '''
-program testifelse;
-var a, b, c: int;
+program printarg;
+var a : int;
 main {
-    if (a < 8) {
-        a = a + 1;
-    }
-    else {
-        c = 3;
-    };
+    a = 1;
+    print(a+1);
 }
 end
 ''')
-
 run_test_case(compiler, '''
-program testifelse;
-var a, b, c: int;
+program printarg;
+var a : int;
 main {
-    a = 5;
-    if (a < 8) {
-        a = a + 1;
-    }
-    else {
-        c = 3;
-    };
+    a = 1;
+    print(a);
 }
 end
 ''')
-
 run_test_case(compiler, '''
-program testwhile;
-var a, b, c: int;
+program printarg;
 main {
-    b = 2;
-    while (b < 5) do {
-        b = b + 1;
-    };
-}
-end
-''')
-
-run_test_case(compiler, '''
-program testarithmetic;
-var a, b, c: int;
-main {
-    a = 5;
-    b = 2;
-    c = a / b;
-
-    if (a < 8) {
-        a = a + 1;
-    }
-    else {
-        c = 3;
-    };
-    
-    while (b < 5) do {
-        b = b + 1;
-    };
-}
-end
-''')
-
-run_test_case(compiler, '''
-program typecheck;
-var a: int;
-main {
-    a = 5.1;
+    print(1);
 }
 end
 ''')
