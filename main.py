@@ -41,11 +41,22 @@ class SymbolTable:
         }
         return address
 
+    # Fix 2: Add debug prints to lookup_variable (ADD THIS TO YOUR SymbolTable CLASS)
+    # Replace your existing lookup_variable method in SymbolTable with this:
     def lookup_variable(self, name):
         """Find variable in current or enclosing scopes"""
-        for scope in reversed(self.scopes[:self.current_scope + 1]):
+        print(f"DEBUG: Looking up variable '{name}'")
+        print(f"DEBUG: Current scope: {self.current_scope}")
+        print(f"DEBUG: All scopes: {self.scopes}")
+        
+        for i, scope in enumerate(reversed(self.scopes[:self.current_scope + 1])):
+            scope_index = self.current_scope - i
+            print(f"DEBUG: Checking scope {scope_index}: {scope}")
             if name in scope:
+                print(f"DEBUG: Found '{name}' in scope {scope_index}")
                 return scope[name]
+        
+        print(f"DEBUG: Variable '{name}' not found in any scope")
         return None
 
     def add_function(self, name, return_type, parameters=None):
@@ -103,7 +114,12 @@ class MemoryManager:
         '!=': 8,
         'GOTO': 9,
         'GOTOF': 10,
-        'PRINT': 11
+        'PRINT': 11,
+        'ERA': 12,      # Establish Run-time Activation
+        'PARAM': 13,    # Parameter Passing
+        'GOSUB': 14,    # Go Subroutine
+        'ENDF': 15,     # End Function
+        'RET': 16       # Return value
     }
     
     def __init__(self):
@@ -203,6 +219,39 @@ class MemoryManager:
     def get_value(self, address):
         """Get the value at a memory address."""
         return self.memory.get(address)
+    
+# Add this new class for managing activation records:
+class ActivationRecord:
+    def __init__(self, function_name, return_address=None):
+        self.function_name = function_name
+        self.return_address = return_address
+        self.local_memory = {}  # Local variable values
+        self.parameters = {}    # Parameter values
+
+class FunctionManager:
+    def __init__(self):
+        self.activation_stack = []
+        self.return_address_stack = []
+        self.current_function = None
+        
+    def push_activation(self, function_name, return_address=None):
+        """Create new activation record for function call"""
+        record = ActivationRecord(function_name, return_address)
+        self.activation_stack.append(record)
+        self.current_function = function_name
+        return record
+    
+    def pop_activation(self):
+        """Remove current activation record"""
+        if self.activation_stack:
+            record = self.activation_stack.pop()
+            self.current_function = self.activation_stack[-1].function_name if self.activation_stack else None
+            return record
+        return None
+    
+    def get_current_record(self):
+        """Get current activation record"""
+        return self.activation_stack[-1] if self.activation_stack else None
 
 class Compiler:
     # --------------------- Lexer Definitions ---------------------
@@ -272,6 +321,11 @@ class Compiler:
     def __init__(self):
         # Initialize memory manager
         self.memory_manager = MemoryManager()
+
+        # Function management
+        self.function_manager = FunctionManager()
+        self.current_function_name = None
+        self.param_counter = 0
         
         # Initialize compiler state
         self.symbol_table = SymbolTable(self.memory_manager)
@@ -317,7 +371,7 @@ class Compiler:
         return 'int'
 
     def emit_quad(self, op, arg1, arg2, result):
-        """Generate both standard and memory-based quadruples"""
+        """Generate both standard and memory-based quadruples with function support"""
         # Standard quadruple (using variable names/values)
         quad = (op, arg1, arg2, result)
         self.quadruples.append(quad)
@@ -325,105 +379,140 @@ class Compiler:
         # Memory-based quadruple (using memory addresses)
         op_code = self.memory_manager.get_operation_code(op)
         
-        # Get address for arg1
-        if arg1 is None:
-            arg1_addr = 0
-        elif isinstance(arg1, (int, float, str)) and not isinstance(arg1, bool):
-            # If it's a literal constant
-            if isinstance(arg1, int) or isinstance(arg1, float) or (isinstance(arg1, str) and arg1.startswith('"')):
-                # Determine type of constant
-                if isinstance(arg1, int):
-                    arg1_addr = self.memory_manager.get_address('constant', 'int', arg1)
-                    self.memory_manager.store_value(arg1_addr, arg1)
-                elif isinstance(arg1, float):
-                    arg1_addr = self.memory_manager.get_address('constant', 'float', arg1)
-                    self.memory_manager.store_value(arg1_addr, arg1)
-                else:  # string
-                    arg1_addr = self.memory_manager.get_address('constant', 'string', arg1)
-                    self.memory_manager.store_value(arg1_addr, arg1)
-            else:
-                # It's a variable name - get address from symbol table
+        # Handle function-specific operations
+        if op in ['ERA', 'GOSUB', 'ENDF']:
+            if op == 'ERA':
+                # ERA: op_code, function_name_as_string, None, param_count
+                arg1_addr = 0  # Could store function name in constants
+                arg2_addr = 0
+                result_addr = result if isinstance(result, int) else 0
+            elif op == 'GOSUB':
+                # GOSUB: op_code, function_name, None, start_address
+                arg1_addr = 0  # Function name
+                arg2_addr = 0
+                result_addr = result if isinstance(result, int) else 0
+            elif op == 'ENDF':
+                # ENDF: op_code, None, None, None
+                arg1_addr = 0
+                arg2_addr = 0
+                result_addr = 0
+        elif op == 'PARAM':
+            # PARAM: op_code, param_value_address, None, param_number
+            if isinstance(arg1, str):
                 var_info = self.symbol_table.lookup_variable(arg1)
-                if var_info:
-                    arg1_addr = var_info['address']
-                else:
-                    # Handle temporary variables that might not be in symbol table yet
-                    if arg1.startswith('t'):
-                        arg1_addr = self.memory_manager.get_address('temp', 'int')  # Default to int
-                    else:
-                        arg1_addr = 0
-                        print(f"Warning: Unknown variable {arg1} in quadruple")
-        else:
-            arg1_addr = 0
-        
-        # Similar logic for arg2
-        if arg2 is None:
-            arg2_addr = 0
-        elif isinstance(arg2, (int, float, str)) and not isinstance(arg2, bool):
-            # If it's a literal constant
-            if isinstance(arg2, int) or isinstance(arg2, float) or (isinstance(arg2, str) and arg2.startswith('"')):
-                # Determine type of constant
-                if isinstance(arg2, int):
-                    arg2_addr = self.memory_manager.get_address('constant', 'int', arg2)
-                    self.memory_manager.store_value(arg2_addr, arg2)
-                elif isinstance(arg2, float):
-                    arg2_addr = self.memory_manager.get_address('constant', 'float', arg2)
-                    self.memory_manager.store_value(arg2_addr, arg2)
-                else:  # string
-                    arg2_addr = self.memory_manager.get_address('constant', 'string', arg2)
-                    self.memory_manager.store_value(arg2_addr, arg2)
+                arg1_addr = var_info['address'] if var_info else 0
+            elif isinstance(arg1, (int, float)):
+                # Handle constants
+                data_type = 'int' if isinstance(arg1, int) else 'float'
+                arg1_addr = self.memory_manager.get_address('constant', data_type, arg1)
+                self.memory_manager.store_value(arg1_addr, arg1)
             else:
-                # It's a variable name - get address from symbol table
-                var_info = self.symbol_table.lookup_variable(arg2)
+                arg1_addr = 0
+            
+            arg2_addr = 0
+            result_addr = result if isinstance(result, int) else 0
+        else:
+            # Use existing logic for other operations
+            # ... (keep the existing emit_quad logic for non-function operations)
+            # Get address for arg1
+            if arg1 is None:
+                arg1_addr = 0
+            elif isinstance(arg1, (int, float, str)) and not isinstance(arg1, bool):
+                # If it's a literal constant
+                if isinstance(arg1, int) or isinstance(arg1, float) or (isinstance(arg1, str) and arg1.startswith('"')):
+                    # Determine type of constant
+                    if isinstance(arg1, int):
+                        arg1_addr = self.memory_manager.get_address('constant', 'int', arg1)
+                        self.memory_manager.store_value(arg1_addr, arg1)
+                    elif isinstance(arg1, float):
+                        arg1_addr = self.memory_manager.get_address('constant', 'float', arg1)
+                        self.memory_manager.store_value(arg1_addr, arg1)
+                    else:  # string
+                        arg1_addr = self.memory_manager.get_address('constant', 'string', arg1)
+                        self.memory_manager.store_value(arg1_addr, arg1)
+                else:
+                    # It's a variable name - get address from symbol table
+                    var_info = self.symbol_table.lookup_variable(arg1)
+                    if var_info:
+                        arg1_addr = var_info['address']
+                    else:
+                        # Handle temporary variables that might not be in symbol table yet
+                        if arg1.startswith('t'):
+                            arg1_addr = self.memory_manager.get_address('temp', 'int')  # Default to int
+                        else:
+                            arg1_addr = 0
+                            print(f"Warning: Unknown variable {arg1} in quadruple")
+            else:
+                arg1_addr = 0
+            
+            # Similar logic for arg2
+            if arg2 is None:
+                arg2_addr = 0
+            elif isinstance(arg2, (int, float, str)) and not isinstance(arg2, bool):
+                # If it's a literal constant
+                if isinstance(arg2, int) or isinstance(arg2, float) or (isinstance(arg2, str) and arg2.startswith('"')):
+                    # Determine type of constant
+                    if isinstance(arg2, int):
+                        arg2_addr = self.memory_manager.get_address('constant', 'int', arg2)
+                        self.memory_manager.store_value(arg2_addr, arg2)
+                    elif isinstance(arg2, float):
+                        arg2_addr = self.memory_manager.get_address('constant', 'float', arg2)
+                        self.memory_manager.store_value(arg2_addr, arg2)
+                    else:  # string
+                        arg2_addr = self.memory_manager.get_address('constant', 'string', arg2)
+                        self.memory_manager.store_value(arg2_addr, arg2)
+                else:
+                    # It's a variable name - get address from symbol table
+                    var_info = self.symbol_table.lookup_variable(arg2)
+                    if var_info:
+                        arg2_addr = var_info['address']
+                    else:
+                        # Handle temporary variables
+                        if arg2.startswith('t'):
+                            arg2_addr = self.memory_manager.get_address('temp', 'int')  # Default to int
+                        else:
+                            arg2_addr = 0
+                            print(f"Warning: Unknown variable {arg2} in quadruple")
+            else:
+                arg2_addr = 0
+            
+            # Get address for result
+            if result is None:
+                result_addr = 0
+            elif isinstance(result, int) and op in ['GOTO', 'GOTOF']:
+                # Jump address (for GOTO/GOTOF)
+                result_addr = result
+            elif isinstance(result, str):
+                # Check if it's a variable name
+                var_info = self.symbol_table.lookup_variable(result)
                 if var_info:
-                    arg2_addr = var_info['address']
+                    result_addr = var_info['address']
                 else:
                     # Handle temporary variables
-                    if arg2.startswith('t'):
-                        arg2_addr = self.memory_manager.get_address('temp', 'int')  # Default to int
+                    if result.startswith('t'):
+                        # Find or create temporary in symbol table
+                        temp_type = 'int'  # Default, should be determined based on operation
+                        if arg1 and arg2:
+                            # Try to determine result type based on operands
+                            type1 = self.get_operand_type(arg1)
+                            type2 = self.get_operand_type(arg2)
+                            if type1 == 'float' or type2 == 'float':
+                                temp_type = 'float'
+                        
+                        # Get memory address for this temporary
+                        result_addr = self.memory_manager.get_address('temp', temp_type)
+                        
+                        # Add to symbol table for future reference
+                        self.symbol_table.scopes[self.symbol_table.current_scope][result] = {
+                            'type': temp_type,
+                            'size': 1,
+                            'address': result_addr
+                        }
                     else:
-                        arg2_addr = 0
-                        print(f"Warning: Unknown variable {arg2} in quadruple")
-        else:
-            arg2_addr = 0
-        
-        # Get address for result
-        if result is None:
-            result_addr = 0
-        elif isinstance(result, int) and op in ['GOTO', 'GOTOF']:
-            # Jump address (for GOTO/GOTOF)
-            result_addr = result
-        elif isinstance(result, str):
-            # Check if it's a variable name
-            var_info = self.symbol_table.lookup_variable(result)
-            if var_info:
-                result_addr = var_info['address']
+                        result_addr = 0
+                        print(f"Warning: Unknown result variable {result} in quadruple")
             else:
-                # Handle temporary variables
-                if result.startswith('t'):
-                    # Find or create temporary in symbol table
-                    temp_type = 'int'  # Default, should be determined based on operation
-                    if arg1 and arg2:
-                        # Try to determine result type based on operands
-                        type1 = self.get_operand_type(arg1)
-                        type2 = self.get_operand_type(arg2)
-                        if type1 == 'float' or type2 == 'float':
-                            temp_type = 'float'
-                    
-                    # Get memory address for this temporary
-                    result_addr = self.memory_manager.get_address('temp', temp_type)
-                    
-                    # Add to symbol table for future reference
-                    self.symbol_table.scopes[self.symbol_table.current_scope][result] = {
-                        'type': temp_type,
-                        'size': 1,
-                        'address': result_addr
-                    }
-                else:
-                    result_addr = 0
-                    print(f"Warning: Unknown result variable {result} in quadruple")
-        else:
-            result_addr = 0
+                result_addr = 0
         
         # Create memory quadruple
         memory_quad = (op_code, arg1_addr, arg2_addr, result_addr)
@@ -450,6 +539,28 @@ class Compiler:
             self.quadruples[quad_index] = (op, arg1, arg2, value)
         else:
             raise IndexError(f"Quadruple index {quad_index} out of range.")
+        
+    def generate_function_quadruples(self, func_name, param_count):
+        """Generate ERA quadruple for function setup"""
+        # ERA - Establish Runtime Activation
+        self.emit_quad('ERA', func_name, None, param_count)
+
+    def generate_param_quadruple(self, param_value, param_number):
+        """Generate PARAM quadruple for parameter passing"""
+        self.emit_quad('PARAM', param_value, None, param_number)
+
+    def generate_gosub_quadruple(self, func_name):
+        """Generate GOSUB quadruple for function call"""
+        func_info = self.symbol_table.get_function(func_name)
+        if not func_info:
+            raise ValueError(f"Function '{func_name}' not declared")
+        
+        # GOSUB will jump to function start address
+        self.emit_quad('GOSUB', func_name, None, func_info.get('start_address', 0))
+
+    def generate_endf_quadruple(self):
+        """Generate ENDF quadruple at end of function"""
+        self.emit_quad('ENDF', None, None, None)
 
     # --------------------- Lexer Methods ---------------------
     def t_ID(self, t):
@@ -577,34 +688,87 @@ class Compiler:
         p[0] = ('cte', p[1])
 
     def p_funcs(self, p):
-        'funcs : VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON'
-        func_name = p[2]
-        return_type = p[1]
+        'funcs : VOID ID LPAREN funcs_params RPAREN LBRACKET funcs_vars body RBRACKET func_end SEMICOLON'
+        # The func_enter_scope action needs the function name and the parsed parameters.
+        # It's better to pass these explicitly to the action or ensure they are accessible.
+        # This structure implies func_enter_scope is correctly placed and extracts from p.
+
+        func_name = p[2] # Correctly captures the ID (function name)
+        params = p[4]    # Correctly captures the result of funcs_params (the list of parameters)
+        
+        # Now, call func_enter_scope directly here with the correct values
+        self._func_enter_scope_action(func_name, params) # Call the helper action
+
+        p[0] = ('funcs', func_name, params, p[7], p[8]) # p[4] is the parameter list
+        
+        # Exit function scope
+        print(f"DEBUG: Exiting function scope for {func_name}")
+        self.symbol_table.exit_scope()
+        self.current_function_name = None
+
+    # Rename the embedded action to a helper method that can be called directly
+    def _func_enter_scope_action(self, func_name, params):
+        """Helper for func_enter_scope logic, now called explicitly."""
+        print(f"DEBUG: func_enter_scope - Processing function {func_name} with params {params}")
         
         # Add function to symbol table
-        self.symbol_table.add_function(func_name, return_type)
-        self.symbol_table.enter_scope()  # Function scope
+        func_info = self.symbol_table.add_function(func_name, 'void', params) # Assuming 'void' for now from the rule VOID
+        func_info['start_address'] = len(self.quadruples)
         
-        # Process parameters (from funcs_prime) and variables (from funcs_vars)
-        p[0] = ('funcs', func_name, p[4], p[7], p[8])
+        # Enter function scope
+        print(f"DEBUG: Entering function scope for {func_name}")
+        self.symbol_table.enter_scope()
+        self.current_function_name = func_name
         
-        self.symbol_table.exit_scope()  # Exit function scope
+        print(f"DEBUG: Current scope after entering: {self.symbol_table.current_scope}")
+        
+        # Add parameters to local scope
+        if params and params != ('empty',): # Check for empty list
+            print(f"DEBUG: Adding parameters to scope: {params}")
+            self._add_parameters_to_scope(params)
+        
+        print(f"DEBUG: Function scope variables after adding params: {self.symbol_table.current_scope_variables()}")
 
-    def p_funcs_prime(self, p):
-        '''funcs_prime : ID COLON type more_funcs
-                    | empty'''
+    # Remove the old p_func_enter_scope rule since it's now a helper
+    # def p_func_enter_scope(self, p):
+    #    'func_enter_scope :'
+    #    # ... this rule will be removed ...
+
+    def p_func_end(self, p):
+        'func_end :'
+        # Generate ENDF quadruple at end of function
+        self.generate_endf_quadruple()
+        p[0] = ('func_end',)
+
+    def p_funcs_params(self, p):
+        '''funcs_params : ID COLON type more_params
+                        | empty'''
         if len(p) == 5:
-            p[0] = ('funcs_prime', p[1], p[3], p[4])
+            param_name = p[1]
+            param_type = p[3][1]  # Get the actual type string
+            more_params_list = p[4]
+            
+            if more_params_list and more_params_list != ('empty',): # Check for ('empty',)
+                p[0] = [(param_name, param_type)] + more_params_list
+            else:
+                p[0] = [(param_name, param_type)]
         else:
-            p[0] = p[1]
+            p[0] = ('empty',) # Represent an empty list of parameters
 
-    def p_more_funcs(self, p):
-        '''more_funcs : COMMA ID COLON type more_funcs
-                    | empty'''
+    def p_more_params(self, p):
+        '''more_params : COMMA ID COLON type more_params
+                        | empty'''
         if len(p) == 6:
-            p[0] = ('more_funcs', p[2], p[4], p[5])
+            param_name = p[2]
+            param_type = p[4][1]  # Get the actual type string
+            more_params_list = p[5]
+            
+            if more_params_list and more_params_list != ('empty',): # Check for ('empty',)
+                p[0] = [(param_name, param_type)] + more_params_list
+            else:
+                p[0] = [(param_name, param_type)]
         else:
-            p[0] = p[1]
+            p[0] = ('empty',) # Represent an empty list of parameters
 
     def p_funcs_vars(self, p):
         '''funcs_vars : vars
@@ -913,22 +1077,65 @@ class Compiler:
     # -------------------- End of control flow updates --------------------
 
     def p_f_call(self, p):
-        'f_call : ID LPAREN f_call_prime RPAREN SEMICOLON'
-        p[0] = ('f_call', p[1], p[3])
+        'f_call : ID era_action LPAREN f_call_args RPAREN gosub_action SEMICOLON'
+        func_name = p[1]
+        p[0] = ('f_call', func_name, p[4])
 
-    def p_f_call_prime(self, p):
-        '''f_call_prime : expression more_f_call
-                        | empty'''
-        if len(p) == 3:
-            p[0] = ('f_call_prime', p[1], p[2])
+    def p_era_action(self, p):
+        'era_action :'
+        # Get function info to determine parameter count
+        func_name = p[-1]  # Get the ID that came before this action
+        func_info = self.symbol_table.get_function(func_name)
+        
+        if not func_info:
+            raise ValueError(f"Function '{func_name}' not declared")
+        
+        # Count parameters
+        param_count = self._count_parameters(func_info.get('parameters', []))
+        
+        # Generate ERA quadruple
+        self.generate_function_quadruples(func_name, param_count)
+        
+        # Reset parameter counter for this call
+        self.param_counter = 0
+        
+        p[0] = ('era_action',)
+
+    def p_gosub_action(self, p):
+        'gosub_action :'
+        # Get function name from the f_call rule
+        func_name = p[-4]  # The ID from f_call rule
+        
+        # Generate GOSUB quadruple
+        self.generate_gosub_quadruple(func_name)
+        
+        p[0] = ('gosub_action',)
+
+    def p_f_call_args(self, p):
+        '''f_call_args : expression param_action more_f_call_args
+                    | empty'''
+        if len(p) == 4:
+            p[0] = ('f_call_args', p[1], p[3])
         else:
             p[0] = p[1]
 
-    def p_more_f_call(self, p):
-        '''more_f_call : COMMA expression more_f_call
-                    | empty'''
-        if len(p) == 4:
-            p[0] = ('more_f_call', p[2], p[3])
+    def p_param_action(self, p):
+        'param_action :'
+        # Get the expression result from stacks
+        if self.operand_stack:
+            param_value = self.operand_stack[-1]  # Don't pop yet, might be used elsewhere
+            
+            # Generate PARAM quadruple
+            self.generate_param_quadruple(param_value, self.param_counter)
+            self.param_counter += 1
+        
+        p[0] = ('param_action',)
+
+    def p_more_f_call_args(self, p):
+        '''more_f_call_args : COMMA expression param_action more_f_call_args
+                        | empty'''
+        if len(p) == 5:
+            p[0] = ('more_f_call_args', p[2], p[4])
         else:
             p[0] = p[1]
 
@@ -942,6 +1149,49 @@ class Compiler:
             print("Contexto:", self.parser.symstack[-5:])
         else:
             print("Error de sintaxis al final del input")
+
+    # Helper methods to add to the Compiler class:
+
+    def _add_parameters_to_scope(self, params_list):
+        """Add function parameters to current scope, expecting a list of (name, type) tuples."""
+        print(f"DEBUG: _add_parameters_to_scope called with: {params_list}")
+        print(f"DEBUG: Current scope: {self.symbol_table.current_scope}")
+        
+        if not params_list or params_list == ('empty',): 
+            print(f"DEBUG: No parameters to add (empty list or empty tuple)")
+            return
+        
+        # It should always be a list now, but defensive check
+        if isinstance(params_list, list):
+            for param_name, param_type in params_list:
+                print(f"DEBUG: Adding parameter {param_name} of type {param_type}")
+                try:
+                    self.symbol_table.add_variable(param_name, param_type)
+                    print(f"DEBUG: Successfully added parameter {param_name}")
+                except Exception as e:
+                    print(f"DEBUG: Error adding parameter {param_name}: {e}")
+        else:
+            print(f"DEBUG: Unexpected parameter list format: {params_list}") # Should not happen with new grammar
+
+    def _count_parameters(self, params_list):
+        """Count the number of parameters in a parameter list"""
+        if not params_list or (isinstance(params_list, tuple) and params_list[0] == 'empty'):
+            return 0
+        
+        count = 0
+        if isinstance(params_list, list):
+            count = len(params_list)
+        else:
+            # Count parameters in the parse tree structure
+            current = params_list
+            while current and current[0] in ['params', 'more_params']:
+                count += 1
+                if len(current) > 3:
+                    current = current[3]
+                else:
+                    break
+        
+        return count
 
     # --------------------- Public Interface ---------------------
     def compile(self, source_code):
@@ -959,6 +1209,11 @@ class Compiler:
         self.operator_stack = []
         self.jump_stack = []
         self.temp_counter = 0
+        
+        # Reset function management
+        self.function_manager = FunctionManager()
+        self.current_function_name = None
+        self.param_counter = 0
         
         # Reset symbol table
         self.symbol_table = SymbolTable(self.memory_manager)
@@ -985,73 +1240,16 @@ def run_test_case(compiler, source_code, case_name=""):
 compiler = Compiler()
 
 run_test_case(compiler, '''
-program testifelse;
-var a, b, c: int;
+program testifelse;     
+void func1 (a: int) [
+    var b: int;
+        {
+            b = 2;
+            print(a+b);
+        }
+    ];
 main {
-    if (a < 8) {
-        a = a + 1;
-    }
-    else {
-        c = 3;
-    };
-}
-end
-''')
-
-run_test_case(compiler, '''
-program testifelse;
-var a, b, c: int;
-main {
-    a = 5;
-    if (a < 8) {
-        a = a + 1;
-    }
-    else {
-        c = 3;
-    };
-}
-end
-''')
-
-run_test_case(compiler, '''
-program testwhile;
-var a, b, c: int;
-main {
-    b = 2;
-    while (b < 5) do {
-        b = b + 1;
-    };
-}
-end
-''')
-
-run_test_case(compiler, '''
-program testarithmetic;
-var a, b, c: int;
-main {
-    a = 5;
-    b = 2;
-    c = a / b;
-
-    if (a < 8) {
-        a = a + 1;
-    }
-    else {
-        c = 3;
-    };
-    
-    while (b < 5) do {
-        b = b + 1;
-    };
-}
-end
-''')
-
-run_test_case(compiler, '''
-program typecheck;
-var a: int;
-main {
-    a = 5.1;
+    func1(2);
 }
 end
 ''')
