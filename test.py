@@ -393,14 +393,14 @@ class Compiler:
         def get_operand_address(operand, is_result_operand=False):
             if operand is None:
                 return 0
-
+            
+            # For GOSUB, keep function name as is
+            if op == 'GOSUB' and operand in self.symbol_table.functions:
+                return operand
+            
             # Handle special cases for function operations
             if op == 'ERA' and operand in self.symbol_table.functions:
                 return 0  # ERA doesn't use addresses
-            if op == 'GOSUB' and is_result_operand and operand in self.symbol_table.functions:
-                # For GOSUB, result should be the function's starting quad index
-                func_info = self.symbol_table.functions[operand]
-                return func_info.get('quad_start', 0)
             
             # Handle parameter index for PARAM operations
             if op == 'PARAM' and is_result_operand and isinstance(operand, int):
@@ -506,12 +506,26 @@ class Compiler:
         p[0] = p[1]
 
     def p_prog_funcs(self, p):
-        '''prog_funcs : funcs prog_funcs
+        '''prog_funcs : funcs maybe_add_jump prog_funcs
                     | empty'''
         if len(p) == 3:
             p[0] = ('prog_funcs', p[1], p[2])
         else:
             p[0] = p[1]
+
+    def p_maybe_add_jump(self, p):
+        'maybe_add_jump :'
+        # Only emit GOTO main if at least one function has been parsed
+        if len(self.quadruples) > 0:
+            # Create the GOTO main quads
+            standard_quad = ('GOTO', 'main', None, None)
+            memory_quad = (9, 'main', 0, 0)  # 9 is the opcode for GOTO
+            
+            # Insert at the beginning of both quad lists
+            self.quadruples.insert(0, standard_quad)
+            self.memory_quadruples.insert(0, memory_quad)
+            
+        p[0] = ('maybe_add_jump',)
 
     def p_body(self, p):
         'body : LBRACE body_prime RBRACE'
@@ -592,7 +606,7 @@ class Compiler:
 
     # Update p_funcs to properly handle function compilation
     def p_funcs(self, p):
-        'funcs : VOID ID LPAREN funcs_prime RPAREN LBRACKET funcs_vars body RBRACKET SEMICOLON'
+        'funcs : VOID ID LPAREN funcs_prime RPAREN enter_func_scope LBRACKET funcs_vars body RBRACKET SEMICOLON'
         func_name = p[2]
         return_type = p[1]
         
@@ -606,23 +620,27 @@ class Compiler:
         func_start_quad = len(self.quadruples)
         self.symbol_table.set_function_start(func_name, func_start_quad)
         
-        # Enter function scope
-        self.symbol_table.enter_scope()
-        self.current_function = func_name
-        
-        # Add parameters to local scope
-        for param_name, param_type in parameters:
-            self.symbol_table.add_variable(param_name, param_type)
-        
-        # Process function body
-        p[0] = ('funcs', func_name, p[4], p[7], p[8])
-        
-        # Generate ENDF quadruple at end of function
+        # Generate ENDF quadruple
         self.emit_quad('ENDF', None, None, None)
         
         # Exit function scope
         self.current_function = None
         self.symbol_table.exit_scope()
+        
+        p[0] = ('funcs', func_name, p[4], p[8], p[9])
+
+    def p_enter_func_scope(self, p):
+        'enter_func_scope :'
+        # Enter function scope
+        self.symbol_table.enter_scope()
+        self.current_function = p[-4]  # Get function name from parse stack
+        
+        # Add parameters to local scope
+        parameters = self._extract_parameters(p[-2])  # Get parameters from funcs_prime
+        for param_name, param_type in parameters:
+            self.symbol_table.add_variable(param_name, param_type)
+        
+        p[0] = ('enter_func_scope',)
     
     def _extract_parameters(self, funcs_prime_node):
         """Extract parameter list from funcs_prime parse tree"""
@@ -644,10 +662,11 @@ class Compiler:
                 return
             elif node[0] == 'more_funcs':
                 param_name = node[1]
-                param_type = node[2][1]
+                param_type = node[2][1]  # Extract type from ('type', 'int')
                 parameters.append((param_name, param_type))
+                # Check for more parameters
                 if len(node) > 3:
-                    extract_more_params(node[4])
+                    extract_more_params(node[3])  # Changed from node[4] to node[3]
         
         if funcs_prime_node[0] != 'empty':
             extract_params(funcs_prime_node)
@@ -1019,7 +1038,7 @@ class Compiler:
 
     # Update f_call to generate proper quadruples
     def p_f_call(self, p):
-        'f_call : ID LPAREN f_call_prime RPAREN SEMICOLON'
+        'f_call : ID LPAREN era_action f_call_prime RPAREN SEMICOLON'
         func_name = p[1]
         
         # Verify function exists
@@ -1027,19 +1046,23 @@ class Compiler:
         if not func_info:
             raise ValueError(f"Undeclared function {func_name}")
         
-        # Generate ERA quadruple (Establish Runtime Activation)
+        # Generate GOSUB quadruple (ERA was already generated by era_action)
+        self.emit_quad('GOSUB', func_name, None, None)
+        
+        p[0] = ('f_call', p[1], p[4])
+
+    def p_era_action(self, p):
+        'era_action :'
+        # Generate ERA quadruple before processing parameters
+        func_name = p[-2]  # Get function name from parse stack
+        
+        # Generate ERA quadruple
         self.emit_quad('ERA', func_name, None, None)
         
         # Reset parameter counter for this call
         self.parameter_counter = 0
         
-        # Process arguments (handled in f_call_prime)
-        
-        # Generate GOSUB quadruple
-        func_start = func_info['quad_start'] if func_info['quad_start'] is not None else 0
-        self.emit_quad('GOSUB', func_name, None, func_start)
-        
-        p[0] = ('f_call', p[1], p[3])
+        p[0] = ('era_action',)
 
     def p_f_call_prime(self, p):
         '''f_call_prime : expression param_action more_f_call
@@ -1106,7 +1129,7 @@ class Compiler:
 
 def run_test_case(compiler, source_code, case_name=""):
     print(f"\nTesting: {case_name}")
-    print(f"Source code: {source_code.strip()}")
+    print(f"\n{source_code.strip()}")
     compiler.reset()  # Reset compiler state before each test
     
     try:
@@ -1136,4 +1159,61 @@ main {
     function();
 }
 end
-''')
+''', "function, no params")
+
+run_test_case(compiler, '''
+program printarg;
+void function (a:int) [
+    var b:int;      
+    { 
+        b = 2;
+        print(a+b);   
+    }];
+main {
+    function(1);
+}
+end
+''', "function with one parameter")
+
+run_test_case(compiler, '''
+program printarg;
+void function (a:int, b:int) [
+    var c:int;      
+    { 
+        c = 2;
+        print(a+b/c);   
+    }];
+main {
+    function(1,4);
+}
+end
+''', "function with two parameters")
+
+run_test_case(compiler, '''
+program printarg;
+var c:int;
+void function (a:int) [
+    var b:int;      
+    { 
+        b = 2;
+        print(a*b-c);   
+    }];
+main {
+    function(1);
+}
+end
+''', "function with one parameter, using global variable")
+
+run_test_case(compiler, '''
+program printarg;
+void function (a:int) [
+    var b:int;      
+    { 
+        b = 2;
+        print(a+b);   
+    }];
+main {
+    function(1+1);
+}
+end
+''', "function with an expression for an argument")
