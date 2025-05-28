@@ -496,7 +496,23 @@ class Compiler:
     # --------------------- Parser Methods ---------------------
     def p_program(self, p):
         '''program : PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END'''
-        self.symbol_table.enter_scope()  # Global scope
+        # Register main as a function at the beginning
+        main_start = len(self.quadruples)  # Current position is where main starts
+        
+        # Count globals, temps, and constants
+        global_vars = len(self.symbol_table.scopes[0])  # All globals
+        temp_vars = sum(1 for var in self.symbol_table.current_scope_variables().values() 
+                    if var['address'] >= 201 and var['address'] <= 350)  # Temp memory range
+        
+        # Add main to function directory
+        self.symbol_table.add_function('main', 'void')
+        main_info = self.symbol_table.functions['main']
+        main_info['quad_start'] = main_start
+        main_info['variables'] = {
+            'global_count': global_vars,
+            'temp_count': temp_vars
+        }
+        
         p[0] = ('program', p[2], p[4], p[5], p[7])
 
     def p_prog_vars(self, p):
@@ -1110,6 +1126,49 @@ class Compiler:
         self.lexer.input(source_code)
         return self.parser.parse(lexer=self.lexer)
     
+    def export_compilation_data(self, filename="compilation_data.txt"):
+        """Export function directory, constants, and quadruples to a file"""
+        with open(filename, 'w') as f:
+            # Write function directory
+            f.write("FUNCTION_DIRECTORY\n")
+            f.write("=================\n")
+            
+            # First write main function info
+            main_info = self.symbol_table.get_function('main')
+            if main_info:
+                f.write(f"FUNC main\n")
+                f.write(f"type: {main_info['return_type']}\n")
+                f.write(f"start: {main_info['quad_start']}\n")
+                f.write(f"params: 0\n")
+                f.write(f"vars: {len(main_info.get('variables', {}))}\n")
+                f.write("END_FUNC\n\n")
+            
+            # Then write other functions
+            for func_name, func_info in self.symbol_table.functions.items():
+                if func_name != 'main':
+                    f.write(f"FUNC {func_name}\n")
+                    f.write(f"type: {func_info['return_type']}\n")
+                    f.write(f"start: {func_info['quad_start']}\n")
+                    f.write(f"params: {len(func_info.get('parameters', []))}\n")
+                    f.write(f"vars: {len(func_info.get('variables', {}))}\n")
+                    f.write("END_FUNC\n\n")
+            
+            # Write constants table in a parseable format
+            f.write("CONSTANTS\n")
+            f.write("=========\n")
+            for type_name, constants in self.memory_manager.constant_map.items():
+                for value, address in constants.items():
+                    f.write(f"{type_name},{value},{address}\n")
+            f.write("END_CONSTANTS\n\n")
+            
+            # Write quadruples in a machine-readable format
+            f.write("QUADRUPLES\n")
+            f.write("==========\n")
+            for i, quad in enumerate(self.memory_quadruples):
+                # Format: index,opcode,arg1,arg2,result
+                f.write(f"{i},{quad[0]},{quad[1]},{quad[2]},{quad[3]}\n")
+            f.write("END_QUADRUPLES\n")
+
     def reset(self):
         """Reset the compiler state for new compilation"""
         self.memory_manager.reset()
@@ -1126,10 +1185,10 @@ class Compiler:
         self.symbol_table = SymbolTable(self.memory_manager)
     
 
-def run_test_case(compiler, source_code, case_name=""):
+def run_test_case(compiler, source_code, case_name="", export=False):
     print(f"\nTesting: {case_name}")
     print(f"\n{source_code.strip()}")
-    compiler.reset()  # Reset compiler state before each test
+    compiler.reset()
     
     try:
         compiler.compile(source_code)
@@ -1141,78 +1200,24 @@ def run_test_case(compiler, source_code, case_name=""):
         print("\nMemory-Based Quadruples:")
         for i, quad in enumerate(compiler.memory_quadruples):
             print(f"{i}: {quad}")
+            
+        # Export compilation data
+        if export:
+            compiler.export_compilation_data(f"{case_name.replace(' ', '_')}_data.txt")
+        
     except Exception as e:
         print(f"Compilation error: {e}")
 
 compiler = Compiler()
 
 run_test_case(compiler, '''
-program printarg;
-void function () [
-    var b:int;      
-    { 
-        b = 2;
-        print(b);   
-    }];
+program math;
+var a, b : int;
 main {
-    function();
+    a = 1;
+    b = 2;
+              
+    print(a + b);
 }
 end
-''', "function, no params")
-
-run_test_case(compiler, '''
-program printarg;
-void function (a:int) [
-    var b:int;      
-    { 
-        b = 2;
-        print(a+b);   
-    }];
-main {
-    function(1);
-}
-end
-''', "function with one parameter")
-
-run_test_case(compiler, '''
-program printarg;
-void function (a:int, b:int) [
-    var c:int;      
-    { 
-        c = 2;
-        print(a+b/c);   
-    }];
-main {
-    function(1,4);
-}
-end
-''', "function with two parameters")
-
-run_test_case(compiler, '''
-program printarg;
-var c:int;
-void function (a:int) [
-    var b:int;      
-    { 
-        b = 2;
-        print(a*b-c);   
-    }];
-main {
-    function(1);
-}
-end
-''', "function with one parameter, using global variable")
-
-run_test_case(compiler, '''
-program printarg;
-void function (a:int) [
-    var b:int;      
-    { 
-        b = 2;
-        print(a+b);   
-    }];
-main {
-    function(1+1);
-}
-end
-''', "function with an expression for an argument")
+''', "test1", export=True)
