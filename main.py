@@ -1,5 +1,6 @@
 import ply.lex as lex
 import ply.yacc as yacc
+from vm import VirtualMachine
 class SymbolTable:
     def __init__(self, memory_manager):
         self.scopes = [{}]  # Stack of scopes (global scope by default)
@@ -1185,10 +1186,11 @@ class Compiler:
         self.symbol_table = SymbolTable(self.memory_manager)
     
 
-def run_test_case(compiler, source_code, case_name="", export=False):
+def run_test_case(compiler, source_code, case_name="", export=False, run=False):
     print(f"\nTesting: {case_name}")
     print(f"\n{source_code.strip()}")
     compiler.reset()
+    vm.reset()
     
     try:
         compiler.compile(source_code)
@@ -1204,11 +1206,16 @@ def run_test_case(compiler, source_code, case_name="", export=False):
         # Export compilation data
         if export:
             compiler.export_compilation_data(f"{case_name.replace(' ', '_')}_data.txt")
+
+        if run:
+            vm.load_compilation_data(f"{case_name.replace(' ', '_')}_data.txt")
+            vm.execute()
         
     except Exception as e:
         print(f"Compilation error: {e}")
 
 compiler = Compiler()
+vm = VirtualMachine()
 
 run_test_case(compiler, '''
 program math;
@@ -1220,4 +1227,84 @@ main {
     print(a + b);
 }
 end
-''', "test1", export=True)
+''', "addition", export=True, run=True)
+
+run_test_case(compiler, '''
+program math;
+var a, b, c : int;
+main {
+    a = 1;
+    b = 2;
+    c = b - a;
+              
+    print(c);
+}
+end
+''', "subtraction", export=True, run=True)
+
+run_test_case(compiler, '''
+program math;
+var a, b, c : int;
+main {
+    a = 1;
+    b = 2;
+    c = a - b;
+              
+    print(c);
+}
+end
+''', "subtraction2", export=True, run=True)
+
+run_test_case(compiler, '''
+program math;
+var a, b, c : int;
+main {
+    a = 2;
+    b = 3;
+    c = a * b;
+              
+    print(c);
+}
+end
+''', "multiplication", export=True, run=True)
+
+run_test_case(compiler, '''
+program math;
+var a, b : int;
+    c : float;
+main {
+    a = 6;
+    b = 3;
+    c = a / b;
+              
+    print(c);
+}
+end
+''', "division", export=True, run=True)
+
+run_test_case(compiler, '''
+program math;
+var a, b, c : int;
+main {
+    a = 2;
+    b = 3;
+    c = 4 + a * b;
+              
+    print(c);
+}
+end
+''', "precedence1", export=True, run=True)
+
+run_test_case(compiler, '''
+program math;
+var a, b : int;
+    c  : float;
+main {
+    a = 6;
+    b = 3;
+    c = a / b + 2;
+              
+    print(c);
+}
+end
+''', "precedence2", export=True, run=True)
