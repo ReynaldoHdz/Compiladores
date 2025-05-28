@@ -1,6 +1,5 @@
 import ply.lex as lex
 import ply.yacc as yacc
-
 class SymbolTable:
     def __init__(self, memory_manager):
         self.scopes = [{}]  # Stack of scopes (global scope by default)
