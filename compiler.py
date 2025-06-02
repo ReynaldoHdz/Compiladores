@@ -288,7 +288,7 @@ class Compiler:
         if len(self.quadruples) > 0 and not self.has_goto_main:
             # Create the GOTO main quads
             standard_quad = ('GOTO', 'main', None, None)
-            memory_quad = (9, 'main', 0, 0)  # 9 is the opcode for GOTO
+            memory_quad = (10, 'main', 0, 0)  # 10 is the opcode for GOTO
             
             # Insert at the beginning of both quad lists
             self.quadruples.insert(0, standard_quad)
@@ -298,7 +298,7 @@ class Compiler:
             for func_name in self.symbol_table.functions:
                 if self.symbol_table.functions[func_name]['quad_start'] is not None:
                     self.symbol_table.functions[func_name]['quad_start'] += 1
-            
+
             self.has_goto_main = True
             
         p[0] = ('maybe_add_jump',)
@@ -403,17 +403,16 @@ class Compiler:
         # Extract parameters from funcs_prime
         parameters = self._extract_parameters(p[5])
         
-        # Add function to symbol table
-        self.symbol_table.add_function(func_name, return_type, parameters)
-        
-        # Mark start of function in quadruples
-        func_start_quad = self.symbol_table.function_start
-        self.symbol_table.set_function_start(func_name, func_start_quad)
-
+        # Function was already added in mark_beginning, just update it
         func_info = self.symbol_table.get_function(func_name)
         if func_info:
-            # Update the function info with parameter details
+            # Update with parameters and other info
             func_info['parameters'] = parameters
+            func_info['return_type'] = return_type
+            
+            # Set the function start (it was captured in mark_beginning)
+            func_start_quad = self.symbol_table.function_start
+            self.symbol_table.set_function_start(func_name, func_start_quad)
             
             # Count local variables (including parameters)
             local_var_count = len(self.symbol_table.scopes[self.symbol_table.current_scope])
@@ -421,7 +420,7 @@ class Compiler:
                 'local_count': local_var_count,
                 'param_count': len(parameters)
             }
-
+        
         # Generate ENDF quadruple
         self.emit_quad('ENDF', None, None, None)
         
@@ -435,6 +434,14 @@ class Compiler:
         'mark_beginning :'
         # Mark start of function in quadruples
         self.symbol_table.function_start = len(self.quadruples)
+
+        # Get function name and return type from previous tokens
+        func_name = p[-1]  # Function name
+        return_type = p[-2]  # Return type (void in this case)
+        
+        # Add function to symbol table immediately so it can be called recursively
+        if func_name not in self.symbol_table.functions:
+            self.symbol_table.add_function(func_name, return_type)
 
         p[0] = ('mark_beginning',)
 
@@ -758,8 +765,15 @@ class Compiler:
         # Get the GOTOF index to fill
         false_jump = self.jump_stack.pop()
         
-        # Fill the false jump to point to next quad (else or after if)
-        self.fill_quad(false_jump, len(self.quadruples))
+        # Calculate target for the GOTOF (where else starts or where if ends)
+        target = len(self.quadruples)
+        
+        # ADJUSTMENT: Add 1 if we're inside a function (not main)
+        if self.current_function and self.current_function != 'main':
+            target += 1
+        
+        # Fill the false jump to point to else or after if
+        self.fill_quad(false_jump, target)
         
         # Push the GOTO index for later filling (after else block)
         self.jump_stack.append(goto_index)
@@ -771,9 +785,16 @@ class Compiler:
         'if_else_end :'
         # Get the GOTO index from the end of 'then' block
         end_jump = self.jump_stack.pop()
+
+        # Calculate the target position (after the else block)
+        target = len(self.quadruples)
+        
+        # ADJUSTMENT: Add 1 if we're inside a function (not main)
+        if self.current_function and self.current_function != 'main':
+            target += 1
         
         # Fill it with current quad position (after the else block)
-        self.fill_quad(end_jump, len(self.quadruples))
+        self.fill_quad(end_jump, target)
         
         p[0] = ('if_else_end',)
 

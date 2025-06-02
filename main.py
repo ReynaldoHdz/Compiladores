@@ -1,31 +1,37 @@
 from compiler import Compiler
 from vm import VirtualMachine
 
-def run_test_case(compiler, source_code, case_name="", export=False, run=False):
+def run_test_case(compiler, source_code, case_name="", export=False, run=False, debug=False):
     print(f"\nTesting: {case_name}")
     print(f"\n{source_code.strip()}")
     compiler.reset()
     vm.reset()
     
+    # Set debug mode on VM
+    vm.debug_mode = debug
+   
     try:
         compiler.compile(source_code)
-        
-        print("\nStandard Quadruples:") 
-        for i, quad in enumerate(compiler.quadruples):
-            print(f"{i}: {quad}")
-            
-        print("\nMemory-Based Quadruples:")
-        for i, quad in enumerate(compiler.memory_quadruples):
-            print(f"{i}: {quad}")
-            
+       
+        if debug:
+            print("\nStandard Quadruples:")
+            for i, quad in enumerate(compiler.quadruples):
+                print(f"{i}: {quad}")
+               
+            print("\nMemory-Based Quadruples:")
+            for i, quad in enumerate(compiler.memory_quadruples):
+                print(f"{i}: {quad}")
+           
         # Export compilation data
         if export:
             compiler.export_compilation_data(f"{case_name.replace(' ', '_')}_data.txt")
-
+            
         if run:
+            if not debug:
+                print("\nOutput:")
             vm.load_compilation_data(f"{case_name.replace(' ', '_')}_data.txt")
             vm.execute()
-        
+       
     except Exception as e:
         print(f"Compilation error: {e}")
 
@@ -214,7 +220,7 @@ main {
 end
 ''', "global_and_local", export=True, run=True) """
 
-run_test_case(compiler, '''
+""" run_test_case(compiler, '''
 program equivalence;
 var a : int;
 main {
@@ -224,4 +230,31 @@ main {
     };
 }
 end
-''', "test_equivalence", export=True, run=True)
+''', "test_equivalence", export=True, run=True) """
+
+""" run_test_case(compiler, '''
+program recursion;
+void countdown(n : int) [{
+    if (n == 0) {
+        print("Done!");
+    } else {
+        print(n);
+        countdown(n-1);
+    };
+}];
+main {
+    countdown(5);
+}
+end
+''', "recursion", export=True, run=True) """
+
+run_test_case(compiler, '''
+program returns;
+int adds_one(n : int) [{
+    return n+1;
+}];
+main {
+    print(adds_one(3));
+}
+end
+''', "factorial", export=True, run=True)
