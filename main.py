@@ -2,10 +2,12 @@ from compiler import Compiler
 from vm import VirtualMachine
 
 def run_test_case(compiler, source_code, case_name="", export=False, run=False, debug=False):
-    print(f"\nTesting: {case_name}")
     compiler.reset()
     vm.reset()
-    
+
+    if run:
+        print(f"\nTesting: {case_name}")
+
     # Set debug mode on VM
     vm.debug_mode = debug
    
@@ -48,7 +50,7 @@ main {
     print(a + b);
 }
 end
-''', "addition", export=True, run=False)
+''', "addition", export=True, run=True)
 
 run_test_case(compiler, '''
 program math;
@@ -61,7 +63,7 @@ main {
     print(c);
 }
 end
-''', "subtraction", export=True, run=False)
+''', "subtraction", export=True, run=True)
 
 run_test_case(compiler, '''
 program math;
@@ -74,7 +76,7 @@ main {
     print(c);
 }
 end
-''', "subtraction2", export=True, run=False)
+''', "subtraction2", export=True, run=True)
 
 run_test_case(compiler, '''
 program math;
@@ -87,7 +89,7 @@ main {
     print(c);
 }
 end
-''', "multiplication", export=True, run=False)
+''', "multiplication", export=True, run=True)
 
 run_test_case(compiler, '''
 program math;
@@ -101,7 +103,7 @@ main {
     print(c);
 }
 end
-''', "division", export=True, run=False)
+''', "division", export=True, run=True)
 
 run_test_case(compiler, '''
 program math;
@@ -114,7 +116,7 @@ main {
     print(c);
 }
 end
-''', "precedence1", export=True, run=False)
+''', "precedence1", export=True, run=True)
 
 run_test_case(compiler, '''
 program math;
@@ -128,26 +130,26 @@ main {
     print(c);
 }
 end
-''', "precedence2", export=True, run=False) """
+''', "precedence2", export=True, run=True) """
 
-""" run_test_case(compiler, '''
+run_test_case(compiler, '''
 program twofuncs;
 void one() [
     {
-        print(1);
+        print("one",1);
     }];
 void two() [
     {
-        print(2);
+        print("two",2);
     }];
 main {
     one();
     two();
 }
 end
-''', "multi_func", export=True, run=False) """
+''', "multi_func", export=True, run=True, debug=False)
 
-""" run_test_case(compiler, '''
+run_test_case(compiler, '''
 program testwhile;
 var a : int;
 main {
@@ -158,9 +160,9 @@ main {
     };
 }
 end
-''', "while_loop", export=True, run=False) """
+''', "while_loop", export=True, run=True)
 
-""" run_test_case(compiler, '''
+run_test_case(compiler, '''
 program testif;
 var a : int;
 main {
@@ -173,9 +175,9 @@ main {
     };
 }
 end
-''', "if_statement", export=True, run=False) """
+''', "if_statement", export=True, run=True)
 
-""" run_test_case(compiler, '''
+run_test_case(compiler, '''
 program testifelse;
 var a : int;
 main {
@@ -188,7 +190,7 @@ main {
     print("Back in main");
 }
 end
-''', "if_else", export=True, run=False) """
+''', "if_else", export=True, run=True)
 
 
 """ run_test_case(compiler, '''
@@ -203,7 +205,7 @@ main {
 end
 ''', "parameters", export=True, run=True) """
 
-""" run_test_case(compiler, '''
+run_test_case(compiler, '''
 program testglobal;
 var a : int;
 void add_subtract(a:int) [
@@ -218,9 +220,9 @@ main {
     add_subtract(a);
 }
 end
-''', "global_and_local", export=True, run=True) """
+''', "global_and_local", export=True, run=True)
 
-""" run_test_case(compiler, '''
+run_test_case(compiler, '''
 program equivalence;
 var a : int;
 main {
@@ -230,9 +232,9 @@ main {
     };
 }
 end
-''', "test_equivalence", export=True, run=True) """
+''', "test_equivalence", export=True, run=True)
 
-""" run_test_case(compiler, '''
+run_test_case(compiler, '''
 program recursion;
 void countdown(n : int) [{
     if (n == 0) {
@@ -246,9 +248,9 @@ main {
     countdown(5);
 }
 end
-''', "recursion", export=True, run=True) """
+''', "recursion", export=True, run=True)
 
-""" run_test_case(compiler, '''
+run_test_case(compiler, '''
 program fibonacci;
 void fibonacci(n : int) [
     var a, b, count, temp : int;
@@ -271,7 +273,7 @@ main {
     fibonacci(5);
 }
 end
-''', "fibonacci", export=True, run=True, debug=False) """
+''', "fibonacci", export=True, run=True, debug=False)
 
 run_test_case(compiler, '''
 program factorial;

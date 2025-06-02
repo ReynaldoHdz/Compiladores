@@ -665,48 +665,36 @@ class Compiler:
         p[0] = ('print', p[3])
 
     def p_print_prime(self, p):
-        '''print_prime : expression
-                        | CTE_STRING'''
-        if p[1] == ('empty',):  # Handle the empty case for print_prime if it was allowed
-            p[0] = ('print_prime', p[1])
-            return
-
-        if isinstance(p[1], tuple) and p[1][0] == 'expression':
-            # This means an expression was just parsed, its result is on the stack
-            operand = self.operand_stack.pop()
-            self.type_stack.pop() # Pop the type as well
-            self.address_stack.pop() # Pop the address as well
-            self.emit_quad('PRINT', None, None, operand)
+        '''print_prime : print_item more_print
+                    | empty'''
+        if len(p) == 3:
+            p[0] = ('print_prime', p[1], p[2])
         else:
-            # It's a CTE_STRING
-            self.emit_quad('PRINT', None, None, p[1]) # Pass the string literal directly
+            p[0] = p[1]
 
-        p[0] = ('print_prime', p[1])
+    def p_print_item(self, p):
+        '''print_item : expression
+                    | CTE_STRING'''
+        if isinstance(p[1], str):  # CTE_STRING
+            # Emit PRINT quadruple for string literal
+            self.emit_quad('PRINT', None, None, p[1])
+        else:  # expression
+            # Pop the expression result from stacks and emit PRINT
+            if self.operand_stack:
+                operand = self.operand_stack.pop()
+                self.type_stack.pop()
+                self.address_stack.pop()
+                self.emit_quad('PRINT', None, None, operand)
+        
+        p[0] = ('print_item', p[1])
 
     def p_more_print(self, p):
         '''more_print : COMMA print_item more_print
                     | empty'''
         if len(p) == 4:
-            operand = self.operand_stack.pop()
-            self.type_stack.pop()
-            self.address_stack.pop()
-            self.emit_quad('PRINT', None, None, operand)
             p[0] = ('more_print', p[2], p[3])
         else:
-            p[0] = p[1] # 'empty'
-
-    def p_print_item(self, p):
-        '''print_item : expression
-                      | CTE_STRING'''
-        if isinstance(p[1], tuple) and p[1][0] == 'expression':
-            p[0] = ('print_item', p[1])
-        else:
-            self.operand_stack.append(p[1])
-            self.type_stack.append('string') # Assuming 'string' type for string literals
-            string_addr = self.memory_manager.get_address('constant', 'string', p[1])
-            self.memory_manager.store_value(string_addr, p[1])
-            self.address_stack.append(string_addr)
-            p[0] = ('print_item', p[1])
+            p[0] = p[1]
 
     def p_condition(self, p):
         '''condition : IF LPAREN expression RPAREN if_condition body if_end else_condition if_else_end SEMICOLON'''
