@@ -12,12 +12,38 @@ Actualmente incluye:
 
 - Analizador semántico básico
 
+- Generación de código intermedio
+
 - Reservación simple de recursos
+
+- Ejecucion de código (máquina virtual)
+
+- Recursión básica
 
 ## Requisitos
 
-- Python 3.13
-- PLY (`pip install ply`)
+- Python (3.13 o mayor)
+- PLY
+
+## Guía de instalación para primera vez
+
+Abre el proyecto con todos los archivos en el mismo directorio.
+
+Abre la terminal y escribe:
+
+```python -m venv venv```
+
+Esto crea un entorno virtual en Python para la instalación de librearías de manera aislada.
+
+Ahora "entramos" al entorno virtual:
+
+```venv\Scripts\activate```
+
+Después instalamos las librerías necesarias:
+
+```pip install -r requirements.txt```
+
+Ahora sí puedes ir a ```main.py``` y hacer pruebas.
 
 ## Características Implementadas
 
@@ -57,6 +83,20 @@ Delimitadores: ;, :, ,, (), {}, []
 
 - Flujos de control lineales y no lineales
 
+### Generación de código intermedio
+
+- Cuádruplos para expresiones
+
+- Cuádruplos para estatutos lineales
+
+- Cuádruplos para estatutos no lineales
+
+- Cuádruplos para funciones
+
 ### Memoria
 
 - Reservación simple de recursos
+
+### Máquina virtual
+
+Este proyecto cuenta con una máquina virtual que puede correr programas para el lenguaje BabyDuck.
