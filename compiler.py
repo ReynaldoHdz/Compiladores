@@ -582,7 +582,6 @@ class Compiler:
         else:
             p[0] = ('factor', p[1])
 
-    # Fix for factor handling
     def p_factor_prime(self, p):
         '''factor_prime : ID
                         | cte'''
@@ -687,12 +686,7 @@ class Compiler:
     def p_more_print(self, p):
         '''more_print : COMMA print_item more_print
                     | empty'''
-        # The logic for emitting quadruples for subsequent print items needs to be here.
-        # When `print_item` is processed, it will put the operand on the stack.
-        # This rule then needs to consume it and generate the PRINT quad.
         if len(p) == 4:
-            # 'print_item' will have already pushed its result to the stacks
-            # So, we just need to generate the PRINT quad for it
             operand = self.operand_stack.pop()
             self.type_stack.pop()
             self.address_stack.pop()
@@ -704,19 +698,9 @@ class Compiler:
     def p_print_item(self, p):
         '''print_item : expression
                       | CTE_STRING'''
-        # This new rule will handle both expression and string for print_prime and more_print
-        # It's responsible for pushing the operand onto the stack for expressions,
-        # or for handling the string literal directly if it's not an expression.
         if isinstance(p[1], tuple) and p[1][0] == 'expression':
-            # The 'expression' rule itself already pushes the result onto the stacks.
-            # So, we don't need to do anything further here for expressions, just pass it up.
             p[0] = ('print_item', p[1])
         else:
-            # It's a CTE_STRING. Push its value (the string content) onto the operand stack
-            # and provide a dummy type/address if needed for consistency with other operations.
-            # For a print string, we directly use the string value as the operand.
-            # No need to allocate constant memory for print string in this simplified example
-            # but in a real compiler, you might. For now, just pass the string.
             self.operand_stack.append(p[1])
             self.type_stack.append('string') # Assuming 'string' type for string literals
             string_addr = self.memory_manager.get_address('constant', 'string', p[1])
