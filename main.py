@@ -215,18 +215,13 @@ end
 ''', "global_and_local", export=True, run=True) """
 
 run_test_case(compiler, '''
-program testglobal;
+program equivalence;
 var a : int;
-void add_subtract(a:int) [
-    var b : int;
-    {
-        a = a + 2;
-        b = 1;
-        print(a-b);
-    }];
 main {
     a = 2;
-    add_subtract(a);
+    if (a == 2) {
+        print("Hello World!");
+    };
 }
 end
-''', "global_and_local", export=True, run=True)
+''', "test_equivalence", export=True, run=True)

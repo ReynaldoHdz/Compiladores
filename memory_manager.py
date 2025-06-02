@@ -37,14 +37,15 @@ class MemoryManager:
         '>': 6,
         '=': 7,
         '!=': 8,
-        'GOTO': 9,
-        'GOTOF': 10,
-        'PRINT': 11,
-        'ERA': 12,
-        'PARAM': 13,
-        'GOSUB': 14,
-        'ENDF': 15,
-        'RETURN': 16
+        '==': 9,
+        'GOTO': 10,
+        'GOTOF': 11,
+        'PRINT': 12,
+        'ERA': 13,
+        'PARAM': 14,
+        'GOSUB': 15,
+        'ENDF': 16,
+        'RETURN': 17
     }
     
     def __init__(self):

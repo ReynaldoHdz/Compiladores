@@ -32,11 +32,23 @@ class VirtualMachine:
 
         # Operation codes
         self.OPERATIONS = {
-            '+': 1, '-': 2, '*': 3, '/': 4,
-            '<': 5, '>': 6, '=': 7, '!=': 8,
-            'GOTO': 9, 'GOTOF': 10, 'PRINT': 11,
-            'ERA': 12, 'PARAM': 13, 'GOSUB': 14,
-            'ENDF': 15, 'RETURN': 16
+            '+': 1,
+            '-': 2,
+            '*': 3,
+            '/': 4,
+            '<': 5,
+            '>': 6,
+            '=': 7,
+            '!=': 8,
+            '==': 9,
+            'GOTO': 10,
+            'GOTOF': 11,
+            'PRINT': 12,
+            'ERA': 13,
+            'PARAM': 14,
+            'GOSUB': 15,
+            'ENDF': 16,
+            'RETURN': 17
         }
 
         # Invert OPERATIONS for easier lookup
@@ -233,7 +245,7 @@ class VirtualMachine:
                             param_addr = 101 + i  # Parameters get first local addresses
                             self.current_activation.local_memory[param_addr] = self.param_stack[i]
                             print(f"  --> Assigned parameter {i} (value: {self.param_stack[i]}) to address {param_addr}")
-                            
+
                     # Jump to function start
                     instruction_pointer = func_info['start']
                     print(f"  --> Jumping to function start at quad {instruction_pointer}")
@@ -278,10 +290,16 @@ class VirtualMachine:
                 case '<':
                     val1 = self.get_value(operand1_addr)
                     val2 = self.get_value(operand2_addr)
-                    # Ensure types are comparable if needed, e.g., both int or both float
                     result = val1 < val2
                     self.set_value(result_addr, result)
                     print(f"  Comparison: {val1} < {val2} = {result}")
+                
+                case '==':
+                    val1 = self.get_value(operand1_addr)
+                    val2 = self.get_value(operand2_addr)
+                    result = val1 == val2
+                    self.set_value(result_addr, result)
+                    print(f"  Comparison: {val1} == {val2} = {result}")
 
                 case 'GOTOF':
                     condition = self.get_value(operand1_addr)

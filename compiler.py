@@ -31,6 +31,7 @@ class Compiler:
         'MINUS',
         'TIMES',
         'DIVIDE',
+        'EQUIVALENT',
         'EQUALS',
         'NOT_EQUALS',
         'GREATER',
@@ -51,6 +52,7 @@ class Compiler:
     t_MINUS = r'-'
     t_TIMES = r'\*'
     t_DIVIDE = r'/'
+    t_EQUIVALENT = r'=='
     t_EQUALS = r'='
     t_NOT_EQUALS = r'!='
     t_GREATER = r'>'
@@ -111,7 +113,7 @@ class Compiler:
     def get_result_type(self, left_type, right_type, operator):
         """Determine the result type of an operation based on operand types"""
         # Simplified type checking rules
-        if operator in ['<', '>', '!=']:
+        if operator in ['<', '>', '!=', '==']:
             return 'bool'
         
         if left_type == 'float' or right_type == 'float':
@@ -365,12 +367,26 @@ class Compiler:
         '''expression_prime : GREATER exp
                         | LESS exp
                         | NOT_EQUALS exp
+                        | EQUIVALENT exp
                         | empty'''
         if len(p) == 3:  # Case with operator
             # Get the right operand info from stacks (from exp)
             # We don't pop here, as that's done in p_expression
             p[0] = ('relop', p[1], p[2])
         else:  # Empty case
+            p[0] = p[1]
+
+    def p_exp(self, p):
+        'exp : term exp_prime'
+        p[0] = ('exp', p[1], p[2])
+
+    def p_exp_prime(self, p):
+        '''exp_prime : PLUS save_operator term process_operation exp_prime
+                    | MINUS save_operator term process_operation exp_prime
+                    | empty'''
+        if len(p) == 6:
+            p[0] = (p[1], p[3], p[5])
+        else:
             p[0] = p[1]
 
     def p_cte(self, p):
@@ -494,19 +510,6 @@ class Compiler:
                     | f_call
                     | print'''
         p[0] = ('statement', p[1])
-
-    def p_exp(self, p):
-        'exp : term exp_prime'
-        p[0] = ('exp', p[1], p[2])
-
-    def p_exp_prime(self, p):
-        '''exp_prime : PLUS save_operator term process_operation exp_prime
-                    | MINUS save_operator term process_operation exp_prime
-                    | empty'''
-        if len(p) == 6:
-            p[0] = (p[1], p[3], p[5])
-        else:
-            p[0] = p[1]
 
     # Add embedded action helpers for arithmetic operations
     def p_save_operator(self, p):
