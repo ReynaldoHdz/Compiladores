@@ -226,6 +226,14 @@ class VirtualMachine:
                     # Set new activation as current
                     self.current_activation = new_activation
                     
+                    # Parameters start at address 101 (beginning of local memory)
+                    param_count = func_info.get('params', 0)
+                    for i in range(param_count):
+                        if i < len(self.param_stack):
+                            param_addr = 101 + i  # Parameters get first local addresses
+                            self.current_activation.local_memory[param_addr] = self.param_stack[i]
+                            print(f"  --> Assigned parameter {i} (value: {self.param_stack[i]}) to address {param_addr}")
+                            
                     # Jump to function start
                     instruction_pointer = func_info['start']
                     print(f"  --> Jumping to function start at quad {instruction_pointer}")

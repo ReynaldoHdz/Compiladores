@@ -206,6 +206,9 @@ class Compiler:
         if 0 <= quad_index < len(self.quadruples):
             op, arg1, arg2, _ = self.quadruples[quad_index]
             self.quadruples[quad_index] = (op, arg1, arg2, value)
+
+            op_code, arg1_addr, arg2_addr, _ = self.memory_quadruples[quad_index]
+            self.memory_quadruples[quad_index] = (op_code, arg1_addr, arg2_addr, value)
         else:
             raise IndexError(f"Quadruple index {quad_index} out of range.")
 
@@ -383,7 +386,7 @@ class Compiler:
         return_type = p[1]
         
         # Extract parameters from funcs_prime
-        parameters = self._extract_parameters(p[4])
+        parameters = self._extract_parameters(p[5])
         
         # Add function to symbol table
         self.symbol_table.add_function(func_name, return_type, parameters)
@@ -391,6 +394,18 @@ class Compiler:
         # Mark start of function in quadruples
         func_start_quad = self.symbol_table.function_start
         self.symbol_table.set_function_start(func_name, func_start_quad)
+
+        func_info = self.symbol_table.get_function(func_name)
+        if func_info:
+            # Update the function info with parameter details
+            func_info['parameters'] = parameters
+            
+            # Count local variables (including parameters)
+            local_var_count = len(self.symbol_table.scopes[self.symbol_table.current_scope])
+            func_info['variables'] = {
+                'local_count': local_var_count,
+                'param_count': len(parameters)
+            }
 
         # Generate ENDF quadruple
         self.emit_quad('ENDF', None, None, None)
@@ -412,7 +427,7 @@ class Compiler:
         'enter_func_scope :'
         # Enter function scope
         self.symbol_table.enter_scope()
-        self.current_function = p[-4]  # Get function name from parse stack
+        self.current_function = p[-5]  # Get function name from parse stack
         
         # Add parameters to local scope
         parameters = self._extract_parameters(p[-2])  # Get parameters from funcs_prime
@@ -700,7 +715,17 @@ class Compiler:
             self.address_stack.append(string_addr)
             p[0] = ('print_item', p[1])
 
-    # -------------------- New embedded actions for control flow --------------------
+    def p_condition(self, p):
+        '''condition : IF LPAREN expression RPAREN if_condition body if_end else_condition if_else_end SEMICOLON'''
+        p[0] = ('condition', p[3], p[6], p[8])
+
+    def p_else_condition(self, p):
+        '''else_condition : ELSE body
+                        | empty'''
+        if len(p) == 3:
+            p[0] = ('else', p[2])
+        else:
+            p[0] = p[1]
     
     # Action after evaluating the condition in if statement
     def p_if_condition(self, p):
@@ -750,6 +775,10 @@ class Compiler:
         
         p[0] = ('if_else_end',)
 
+    def p_cycle(self, p):
+        'cycle : WHILE while_start LPAREN expression RPAREN while_condition DO body while_end SEMICOLON'
+        p[0] = ('while_loop', p[4], p[8])
+
     # Action at the beginning of a while loop
     def p_while_start(self, p):
         'while_start :'
@@ -794,26 +823,6 @@ class Compiler:
         self.fill_quad(false_jump, len(self.quadruples))
         
         p[0] = ('while_end',)
-
-    # -------------------- Update control flow rules with embedded actions --------------------
-    
-    def p_cycle(self, p):
-        'cycle : WHILE while_start LPAREN expression RPAREN while_condition DO body while_end SEMICOLON'
-        p[0] = ('while_loop', p[4], p[8])
-
-    def p_condition(self, p):
-        '''condition : IF LPAREN expression RPAREN if_condition body if_end else_condition if_else_end SEMICOLON'''
-        p[0] = ('condition', p[3], p[6], p[8])
-
-    def p_else_condition(self, p):
-        '''else_condition : ELSE body
-                        | empty'''
-        if len(p) == 3:
-            p[0] = ('else', p[2])
-        else:
-            p[0] = p[1]
-    
-    # -------------------- End of control flow updates --------------------
 
     # Update f_call to generate proper quadruples
     def p_f_call(self, p):
@@ -918,9 +927,10 @@ class Compiler:
                     f.write(f"type: {func_info['return_type']}\n")
                     f.write(f"start: {func_info['quad_start']}\n")
                     f.write(f"params: {len(func_info.get('parameters', []))}\n")
-                    # Count local variables for this function
-                    local_vars = len(func_info.get('variables', {}))
-                    f.write(f"vars: {local_vars}\n")
+                    # Get variable info
+                    var_info = func_info.get('variables', {})
+                    local_count = var_info.get('local_count', 0)
+                    f.write(f"vars: {local_count}\n")
                     f.write("END_FUNC\n")
             
             # Write constants table
@@ -955,157 +965,3 @@ class Compiler:
         
         # Reset symbol table
         self.symbol_table = SymbolTable(self.memory_manager)
-    
-
-def run_test_case(compiler, source_code, case_name="", export=False, run=False):
-    print(f"\nTesting: {case_name}")
-    print(f"\n{source_code.strip()}")
-    compiler.reset()
-    vm.reset()
-    
-    try:
-        compiler.compile(source_code)
-        
-        print("\nStandard Quadruples:") 
-        for i, quad in enumerate(compiler.quadruples):
-            print(f"{i}: {quad}")
-            
-        print("\nMemory-Based Quadruples:")
-        for i, quad in enumerate(compiler.memory_quadruples):
-            print(f"{i}: {quad}")
-            
-        # Export compilation data
-        if export:
-            compiler.export_compilation_data(f"{case_name.replace(' ', '_')}_data.txt")
-
-        if run:
-            vm.load_compilation_data(f"{case_name.replace(' ', '_')}_data.txt")
-            vm.execute()
-        
-    except Exception as e:
-        print(f"Compilation error: {e}")
-
-compiler = Compiler()
-vm = VirtualMachine()
-
-""" run_test_case(compiler, '''
-program math;
-var a, b : int;
-main {
-    a = 1;
-    b = 2;
-              
-    print(a + b);
-}
-end
-''', "addition", export=True, run=False)
-
-run_test_case(compiler, '''
-program math;
-var a, b, c : int;
-main {
-    a = 1;
-    b = 2;
-    c = b - a;
-              
-    print(c);
-}
-end
-''', "subtraction", export=True, run=False)
-
-run_test_case(compiler, '''
-program math;
-var a, b, c : int;
-main {
-    a = 1;
-    b = 2;
-    c = a - b;
-              
-    print(c);
-}
-end
-''', "subtraction2", export=True, run=False)
-
-run_test_case(compiler, '''
-program math;
-var a, b, c : int;
-main {
-    a = 2;
-    b = 3;
-    c = a * b;
-              
-    print(c);
-}
-end
-''', "multiplication", export=True, run=False)
-
-run_test_case(compiler, '''
-program math;
-var a, b : int;
-    c : float;
-main {
-    a = 6;
-    b = 3;
-    c = a / b;
-              
-    print(c);
-}
-end
-''', "division", export=True, run=False)
-
-run_test_case(compiler, '''
-program math;
-var a, b, c : int;
-main {
-    a = 2;
-    b = 3;
-    c = 4 + a * b;
-              
-    print(c);
-}
-end
-''', "precedence1", export=True, run=False)
-
-run_test_case(compiler, '''
-program math;
-var a, b : int;
-    c  : float;
-main {
-    a = 6;
-    b = 3;
-    c = a / b + 2;
-              
-    print(c);
-}
-end
-''', "precedence2", export=True, run=False) """
-
-""" run_test_case(compiler, '''
-program twofuncs;
-void one() [
-    {
-        print(1);
-    }];
-void two() [
-    {
-        print(2);
-    }];
-main {
-    one();
-    two();
-}
-end
-''', "multi_func", export=True, run=False) """
-
-run_test_case(compiler, '''
-program whileloop;
-var a : int;
-main {
-    a = 6;
-    while (a > 0) do {
-        a = a-1;
-        print(a);
-    };
-}
-end
-''', "while_loop", export=True, run=True)
