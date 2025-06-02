@@ -192,7 +192,6 @@ main {
 end
 ''', "if_else", export=True, run=True)
 
-
 """ run_test_case(compiler, '''
 program parameters;
 void add_one(a:int) [
@@ -294,4 +293,4 @@ main {
     factorial(5);
 }
 end
-''', "factorial", export=True, run=True, debug=False)
+''', "factorial", export=True, run=False, debug=False)
