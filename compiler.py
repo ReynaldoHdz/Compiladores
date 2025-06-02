@@ -1,6 +1,5 @@
 import ply.lex as lex
 import ply.yacc as yacc
-from vm import VirtualMachine
 from symbol_table import SymbolTable
 from memory_manager import MemoryManager
 
