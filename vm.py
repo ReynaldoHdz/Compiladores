@@ -1,3 +1,11 @@
+class ActivationRecord:
+    """Represents a function's activation record on the call stack"""
+    def __init__(self, function_name, return_address):
+        self.function_name = function_name
+        self.return_address = return_address
+        self.local_memory = {}  # Local variables and temporaries
+        self.param_values = []  # Parameters passed to this function
+
 class VirtualMachine:
     def __init__(self):
         # Memory segment boundaries
@@ -40,9 +48,15 @@ class VirtualMachine:
         self.constants_table = {}
         self.quadruples = []
 
+        self.activation_stack = []
+        self.current_activation = None
+        self.param_stack = []
+
     def load_compilation_data(self, filename):
         """Load function directory, constants and quadruples from compilation data file"""
         current_section = None
+        current_func = None
+        
         with open(filename, 'r') as f:
             for line in f:
                 line = line.strip()
@@ -69,15 +83,28 @@ class VirtualMachine:
                         self.function_directory[current_func]['params'] = int(line.split()[1])
                     elif line.startswith("vars:"):
                         self.function_directory[current_func]['vars'] = int(line.split()[1])
+                    elif line == "END_FUNC":
+                        current_func = None
                 elif current_section == "CONST" and line != "END_CONSTANTS":
-                    type_name, value, address = line.split(',')
-                    value = int(value) if type_name == 'int' else float(value)
-                    self.constants_table[int(address)] = value
+                    parts = line.split(',')
+                    type_name = parts[0]
+                    if type_name == 'string':
+                        # String values might contain commas, so rejoin the rest
+                        value = ','.join(parts[1:-1])
+                        address = int(parts[-1])
+                    else:
+                        value = int(parts[1]) if type_name == 'int' else float(parts[1])
+                        address = int(parts[2])
+                    self.constants_table[address] = value
                 elif current_section == "QUAD" and line != "END_QUADRUPLES":
-                    idx, op, arg1, arg2, result = line.split(',')
-                    arg1 = int(arg1) if arg1.isdigit() else arg1
-                    arg2 = int(arg2) if arg2.isdigit() else arg2
-                    result = int(result) if result.isdigit() else result
+                    parts = line.split(',', 4)  # Split into max 5 parts
+                    idx, op, arg1, arg2, result = parts
+                    
+                    # Convert numeric strings to integers, keep function names as strings
+                    arg1 = int(arg1) if arg1.isdigit() or (arg1.startswith('-') and arg1[1:].isdigit()) else arg1
+                    arg2 = int(arg2) if arg2.isdigit() or (arg2.startswith('-') and arg2[1:].isdigit()) else arg2
+                    result = int(result) if result.isdigit() or (result.startswith('-') and result[1:].isdigit()) else result
+                    
                     self.quadruples.append((int(op), arg1, arg2, result))
 
         print("\nFunction Directory:", self.function_directory)
@@ -94,6 +121,7 @@ class VirtualMachine:
         return None, None
 
     def get_value(self, addr):
+        """Get value with activation record awareness"""
         if addr is None:
             return None
 
@@ -103,7 +131,16 @@ class VirtualMachine:
             if addr not in self.constants_table:
                 raise ValueError(f"Constant address {addr} not found in constants table.")
             return self.constants_table[addr]
-        elif segment in ['global', 'local', 'temp']:
+        elif segment == 'global':
+            # Global variables are always in vm_memory
+            if addr not in self.vm_memory:
+                print(f"  Warning: Accessing uninitialized global address {addr}")
+            return self.vm_memory.get(addr)
+        elif segment in ['local', 'temp']:
+            # Local and temp variables check current activation record first
+            if self.current_activation and addr in self.current_activation.local_memory:
+                return self.current_activation.local_memory[addr]
+            # Fallback to global memory (for main function)
             if addr not in self.vm_memory:
                 print(f"  Warning: Accessing uninitialized address {addr}")
             return self.vm_memory.get(addr)
@@ -111,6 +148,7 @@ class VirtualMachine:
             raise ValueError(f"Address {addr} does not belong to any defined memory segment.")
 
     def set_value(self, addr, value):
+        """Set value with activation record awareness"""
         if addr is None:
             print("  Warning: Attempted to set value to None address. Skipping.")
             return
@@ -119,16 +157,19 @@ class VirtualMachine:
         
         if segment == 'constant':
             raise ValueError(f"Attempted to write to constant address {addr}.")
-        elif segment in ['global', 'local', 'temp']:
-            if data_type == 'int' and not isinstance(value, int):
-                value = int(value) if isinstance(value, float) else value
-            elif data_type == 'float' and not isinstance(value, (int, float)):
-                value = float(value) if isinstance(value, int) else value
-            elif data_type == 'bool' and not isinstance(value, bool):
-                raise TypeError(f"Type mismatch: Expected bool at address {addr}")
-
+        elif segment == 'global':
+            # Global variables always go to vm_memory
             self.vm_memory[addr] = value
             print(f"  --> Set memory[{addr}] (segment: {segment}, type: {data_type}) = {value}")
+        elif segment in ['local', 'temp']:
+            # Local and temp variables go to current activation record if it exists
+            if self.current_activation:
+                self.current_activation.local_memory[addr] = value
+                print(f"  --> Set activation[{self.current_activation.function_name}].memory[{addr}] (segment: {segment}, type: {data_type}) = {value}")
+            else:
+                # Fallback to global memory (for main function)
+                self.vm_memory[addr] = value
+                print(f"  --> Set memory[{addr}] (segment: {segment}, type: {data_type}) = {value}")
         else:
             raise ValueError(f"Cannot set value for address {addr} in unknown segment.")
 
@@ -149,6 +190,83 @@ class VirtualMachine:
 
             # Your existing match-case block here
             match operator:
+                case 'ERA':
+                    # Era: Prepare activation record for function call
+                    func_name = operand1_addr  # Function name is in operand1
+                    print(f"  ERA: Preparing activation record for function '{func_name}'")
+                    # Clear parameter stack for new function call
+                    self.param_stack = []
+                
+                case 'PARAM':
+                    # Push parameter value to parameter stack
+                    param_value = self.get_value(operand1_addr)
+                    param_index = result_addr
+                    print(f"  PARAM: Pushing parameter {param_index} with value {param_value}")
+                    self.param_stack.append(param_value)
+                
+                case 'GOSUB':
+                    # Function call
+                    func_name = operand1_addr  # Function name is in operand1
+                    print(f"  GOSUB: Calling function '{func_name}'")
+                    
+                    # Look up function in directory
+                    if func_name not in self.function_directory:
+                        raise ValueError(f"Function '{func_name}' not found in function directory")
+                    
+                    func_info = self.function_directory[func_name]
+                    
+                    # Create new activation record
+                    new_activation = ActivationRecord(func_name, instruction_pointer + 1)
+                    new_activation.param_values = self.param_stack.copy()
+                    
+                    # Push current activation to stack (if any)
+                    if self.current_activation:
+                        self.activation_stack.append(self.current_activation)
+                    
+                    # Set new activation as current
+                    self.current_activation = new_activation
+                    
+                    # Jump to function start
+                    instruction_pointer = func_info['start']
+                    print(f"  --> Jumping to function start at quad {instruction_pointer}")
+                    print(f"  --> Activation stack depth: {len(self.activation_stack) + 1}")
+                    continue
+                
+                case 'ENDF':
+                    # End of function
+                    print(f"  ENDF: Returning from function")
+                    
+                    if self.current_activation:
+                        return_address = self.current_activation.return_address
+                        print(f"  --> Returning to quad {return_address}")
+                        
+                        # Restore previous activation record
+                        if self.activation_stack:
+                            self.current_activation = self.activation_stack.pop()
+                            print(f"  --> Restored activation for '{self.current_activation.function_name}'")
+                        else:
+                            self.current_activation = None
+                            print(f"  --> Back to main program")
+                        
+                        # Jump back to return address
+                        instruction_pointer = return_address
+                        continue
+                    else:
+                        # ENDF in main means end of program
+                        print("  --> End of main program")
+                        break
+                
+                case 'GOTO':
+                    if operand1_addr == 'main':
+                        # Special case: GOTO main at the beginning
+                        target_quad_index = self.function_directory['main']['start']
+                        print(f"  GOTO: Jumping to main at quad {target_quad_index}")
+                    else:
+                        target_quad_index = result_addr
+                        print(f"  GOTO: Jumping to quad {target_quad_index}")
+                    instruction_pointer = target_quad_index
+                    continue
+    
                 case '<':
                     val1 = self.get_value(operand1_addr)
                     val2 = self.get_value(operand2_addr)
@@ -177,12 +295,6 @@ class VirtualMachine:
                     val_to_assign = self.get_value(operand1_addr)
                     self.set_value(result_addr, val_to_assign)
                     print(f"  Assignment: Value {val_to_assign} assigned to address {result_addr}")
-                
-                case 'GOTO':
-                    target_quad_index = result_addr
-                    print(f"  GOTO: Jumping to Quad {target_quad_index}")
-                    instruction_pointer = target_quad_index
-                    continue # Skip instruction_pointer increment
                 
                 case 'PRINT':
                     val_to_print = self.get_value(result_addr)
@@ -232,6 +344,8 @@ class VirtualMachine:
 
         print("\n--- Execution Complete ---")
         print("Final Memory State:", self.vm_memory)
+        if self.current_activation:
+            print("Current Activation Memory:", self.current_activation.local_memory)
 
     def reset(self):
         """Reset the virtual machine state"""
@@ -240,6 +354,9 @@ class VirtualMachine:
         self.function_directory = {}
         self.constants_table = {}
         self.quadruples = []
+        self.activation_stack = []
+        self.current_activation = None
+        self.param_stack = []
         
         # Clear any activation records or other execution state
         self.activation_stack = []

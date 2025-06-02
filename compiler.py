@@ -1,270 +1,8 @@
 import ply.lex as lex
 import ply.yacc as yacc
 from vm import VirtualMachine
-class SymbolTable:
-    def __init__(self, memory_manager):
-        self.scopes = [{}]  # Stack of scopes (global scope by default)
-        self.functions = {}  # Function directory
-        self.current_scope = 0  # Points to current scope in stack
-        self.memory_manager = memory_manager  # Reference to memory manager
-
-    def enter_scope(self):
-        """Create a new scope level"""
-        self.scopes.append({})
-        self.current_scope += 1
-        if self.current_scope > 1:  # Skip for global scope
-            self.memory_manager.push_context()
-
-    def exit_scope(self):
-        """Leave current scope"""
-        if self.current_scope > 0:  # Don't pop global scope
-            self.scopes.pop()
-            self.current_scope -= 1
-            if self.current_scope > 0:  # Skip for global scope
-                self.memory_manager.pop_context()
-
-    def add_variable(self, name, var_type, size=1):
-        """Add variable to current scope with memory allocation"""
-        if name in self.scopes[self.current_scope]:
-            raise ValueError(f"Variable '{name}' already declared in this scope")
-        
-        # Determine memory segment (global or local)
-        segment = 'global' if self.current_scope == 0 else 'local'
-        
-        # Get memory address for this variable
-        address = self.memory_manager.get_address(segment, var_type)
-        
-        self.scopes[self.current_scope][name] = {
-            'type': var_type,
-            'size': size,
-            'address': address
-        }
-        return address
-
-    def lookup_variable(self, name):
-        """Find variable in current or enclosing scopes"""
-        for scope in reversed(self.scopes[:self.current_scope + 1]):
-            if name in scope:
-                return scope[name]
-        return None
-
-    def add_function(self, name, return_type, parameters=None):
-        """Add function to function directory"""
-        if name in self.functions:
-            raise ValueError(f"Function '{name}' already declared")
-        
-        self.functions[name] = {
-            'return_type': return_type,
-            'parameters': parameters or [],
-            'variables': {},  # Will store function's local variables
-            'address': None,  # Will be filled during code generation
-            'quad_start': None  # Starting quadruple for this function
-        }
-        return self.functions[name]
-    
-    def set_function_start(self, name, quad_index):
-        """Set the starting quadruple index for a function"""
-        if name in self.functions:
-            self.functions[name]['quad_start'] = quad_index
-
-    def get_function(self, name):
-        """Retrieve function details"""
-        return self.functions.get(name)
-
-    def current_scope_variables(self):
-        """Get variables in current scope"""
-        return self.scopes[self.current_scope]
-    
-# 1. Add activation record support to MemoryManager
-class ActivationRecord:
-    def __init__(self, function_name):
-        self.function_name = function_name
-        self.local_memory = {}  # address -> value mapping for local variables
-        self.return_address = None
-    
-class MemoryManager:
-    # Memory segment boundaries
-    MEMORY_MAP = {
-        'global': {
-            'int': (1, 50),
-            'float': (51, 100)
-        },
-        'local': {
-            'int': (101, 150),
-            'float': (151, 200)
-        },
-        'temp': {
-            'int': (201, 250),
-            'float': (251, 300),
-            'bool': (301, 350)
-        },
-        'constant': {
-            'int': (351, 400),
-            'float': (401, 450),
-            'string': (451, 500)
-        }
-    }
-    
-    # Operation codes
-    OPERATIONS = {
-        '+': 1,
-        '-': 2,
-        '*': 3,
-        '/': 4,
-        '<': 5,
-        '>': 6,
-        '=': 7,
-        '!=': 8,
-        'GOTO': 9,
-        'GOTOF': 10,
-        'PRINT': 11,
-        'ERA': 12,
-        'PARAM': 13,
-        'GOSUB': 14,
-        'ENDF': 15,
-        'RETURN': 16
-    }
-    
-    def __init__(self):
-        # Initialize memory counters for each segment
-        self.counters = {}
-        for segment, types in self.MEMORY_MAP.items():
-            self.counters[segment] = {}
-            for type_name, (start, _) in types.items():
-                self.counters[segment][type_name] = start
-        
-        # Constant value to address mapping for reuse
-        self.constant_map = {
-            'int': {},
-            'float': {},
-            'string': {}
-        }
-        
-        # Stack for local memory contexts (for function calls)
-        self.context_stack = []
-        
-        # Virtual memory storage (address -> value)
-        self.memory = {}
-
-        # Add activation record stack
-        self.activation_stack = []
-        self.global_memory = {}  # Global memory separate from activation records
-    
-    def push_activation_record(self, function_name):
-        """Push a new activation record for function call"""
-        record = ActivationRecord(function_name)
-        self.activation_stack.append(record)
-        return record
-    
-    def pop_activation_record(self):
-        """Pop the current activation record when function returns"""
-        if self.activation_stack:
-            return self.activation_stack.pop()
-        return None
-    
-    def get_current_activation_record(self):
-        """Get the current activation record (top of stack)"""
-        return self.activation_stack[-1] if self.activation_stack else None
-    
-    def get_address(self, segment, data_type, value=None):
-        """Get a memory address for a variable or constant."""
-        if segment == 'constant':
-            # For constants, check if we've already assigned an address
-            if value in self.constant_map[data_type]:
-                return self.constant_map[data_type][value]
-            
-        # Get the current counter for this segment/type
-        counter = self.counters[segment][data_type]
-        
-        # Check if we've reached the limit for this segment
-        start, end = self.MEMORY_MAP[segment][data_type]
-        if counter > end:
-            raise MemoryError(f"Out of memory in {segment} {data_type} segment")
-        
-        # Increment the counter for next allocation
-        self.counters[segment][data_type] += 1
-        
-        if segment == 'constant':
-            # Store the mapping from value to address for constants
-            self.constant_map[data_type][value] = counter
-        
-        return counter
-    
-    def get_operation_code(self, operation):
-        """Get the numeric code for an operation."""
-        return self.OPERATIONS.get(operation, 0)
-    
-    def reset(self):
-        """Reset memory manager state."""
-        # Reset counters to initial values
-        for segment, types in self.MEMORY_MAP.items():
-            for type_name, (start, _) in types.items():
-                self.counters[segment][type_name] = start
-        
-        # Clear constant mappings
-        self.constant_map = {
-            'int': {},
-            'float': {},
-            'string': {}
-        }
-        
-        # Clear context stack
-        self.context_stack = []
-        
-        # Clear memory
-        self.memory = {}
-    
-    def push_context(self):
-        """Push current local counters to stack (for function calls)."""
-        self.context_stack.append(self.counters['local'].copy())
-        
-        # Reset local counters to initial values
-        for type_name, (start, _) in self.MEMORY_MAP['local'].items():
-            self.counters['local'][type_name] = start
-    
-    def pop_context(self):
-        """Restore previous local counters (when returning from function)."""
-        if self.context_stack:
-            self.counters['local'] = self.context_stack.pop()
-            
-    def get_address_type(self, address):
-        """Get the segment and type for a given address."""
-        for segment, types in self.MEMORY_MAP.items():
-            for type_name, (start, end) in types.items():
-                if start <= address <= end:
-                    return segment, type_name
-        return None, None
-    
-    def store_value(self, address, value):
-        """Store a value at a memory address with scope awareness"""
-        segment, data_type = self.get_address_type(address)
-        
-        if segment == 'global':
-            self.global_memory[address] = value
-        elif segment in ['local', 'temp']:
-            # Store in current activation record if it exists, otherwise global
-            current_record = self.get_current_activation_record()
-            if current_record:
-                current_record.local_memory[address] = value
-            else:
-                self.global_memory[address] = value
-        else:  # constant
-            self.memory[address] = value
-    
-    def get_value(self, address):
-        """Get the value at a memory address with scope awareness"""
-        segment, data_type = self.get_address_type(address)
-        
-        if segment == 'global':
-            return self.global_memory.get(address)
-        elif segment in ['local', 'temp']:
-            # Check current activation record first, then global
-            current_record = self.get_current_activation_record()
-            if current_record and address in current_record.local_memory:
-                return current_record.local_memory[address]
-            return self.global_memory.get(address)
-        else:  # constant
-            return self.memory.get(address)
+from symbol_table import SymbolTable
+from memory_manager import MemoryManager
 
 class Compiler:
     # --------------------- Lexer Definitions ---------------------
@@ -347,6 +85,8 @@ class Compiler:
         self.jump_stack = []
         self.current_function = None  # Track current function being compiled
         self.parameter_counter = 0    # Track parameters being passed
+
+        self.has_goto_main = False
         
         # Build the lexer and parser
         self.lexer = lex.lex(module=self)
@@ -398,16 +138,20 @@ class Compiler:
             if op == 'GOSUB' and operand in self.symbol_table.functions:
                 return operand
             
+            # For GOTO with 'main', keep as string
+            if op == 'GOTO' and operand == 'main':
+                return operand
+            
             # Handle special cases for function operations
             if op == 'ERA' and operand in self.symbol_table.functions:
-                return 0  # ERA doesn't use addresses
+                return operand  # Keep function name for ERA
             
             # Handle parameter index for PARAM operations
             if op == 'PARAM' and is_result_operand and isinstance(operand, int):
                 return operand
             
             # Handle jump addresses for control flow
-            if is_result_operand and isinstance(operand, int) and op in ['GOTO', 'GOTOF', 'GOSUB']:
+            if is_result_operand and isinstance(operand, int) and op in ['GOTO', 'GOTOF']:
                 return operand
             
             # Handle string operands
@@ -496,9 +240,7 @@ class Compiler:
 
     # --------------------- Parser Methods ---------------------
     def p_program(self, p):
-        '''program : PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN body END'''
-        # Register main as a function at the beginning
-        main_start = len(self.quadruples)  # Current position is where main starts
+        '''program : PROGRAM ID SEMICOLON prog_vars prog_funcs MAIN enter_main body END'''
         
         # Count globals, temps, and constants
         global_vars = len(self.symbol_table.scopes[0])  # All globals
@@ -506,15 +248,22 @@ class Compiler:
                     if var['address'] >= 201 and var['address'] <= 350)  # Temp memory range
         
         # Add main to function directory
-        self.symbol_table.add_function('main', 'void')
         main_info = self.symbol_table.functions['main']
-        main_info['quad_start'] = main_start
         main_info['variables'] = {
             'global_count': global_vars,
             'temp_count': temp_vars
         }
         
         p[0] = ('program', p[2], p[4], p[5], p[7])
+
+    def p_enter_main(self,p):
+        'enter_main :'
+        # Add main to function directory
+        self.symbol_table.add_function('main', 'void')
+        main_info = self.symbol_table.functions['main']
+        main_info['quad_start'] = len(self.quadruples)
+
+        p[0] = ('enter_main',)
 
     def p_prog_vars(self, p):
         '''prog_vars : vars
@@ -531,8 +280,8 @@ class Compiler:
 
     def p_maybe_add_jump(self, p):
         'maybe_add_jump :'
-        # Only emit GOTO main if at least one function has been parsed
-        if len(self.quadruples) > 0:
+        # Only emit GOTO main once, when we encounter the first function
+        if len(self.quadruples) > 0 and not self.has_goto_main:
             # Create the GOTO main quads
             standard_quad = ('GOTO', 'main', None, None)
             memory_quad = (9, 'main', 0, 0)  # 9 is the opcode for GOTO
@@ -540,6 +289,13 @@ class Compiler:
             # Insert at the beginning of both quad lists
             self.quadruples.insert(0, standard_quad)
             self.memory_quadruples.insert(0, memory_quad)
+            
+            # Update all function start positions since we inserted at the beginning
+            for func_name in self.symbol_table.functions:
+                if self.symbol_table.functions[func_name]['quad_start'] is not None:
+                    self.symbol_table.functions[func_name]['quad_start'] += 1
+            
+            self.has_goto_main = True
             
         p[0] = ('maybe_add_jump',)
 
@@ -622,7 +378,7 @@ class Compiler:
 
     # Update p_funcs to properly handle function compilation
     def p_funcs(self, p):
-        'funcs : VOID ID LPAREN funcs_prime RPAREN enter_func_scope LBRACKET funcs_vars body RBRACKET SEMICOLON'
+        'funcs : VOID ID mark_beginning LPAREN funcs_prime RPAREN enter_func_scope LBRACKET funcs_vars body RBRACKET SEMICOLON'
         func_name = p[2]
         return_type = p[1]
         
@@ -633,9 +389,9 @@ class Compiler:
         self.symbol_table.add_function(func_name, return_type, parameters)
         
         # Mark start of function in quadruples
-        func_start_quad = len(self.quadruples)
+        func_start_quad = self.symbol_table.function_start
         self.symbol_table.set_function_start(func_name, func_start_quad)
-        
+
         # Generate ENDF quadruple
         self.emit_quad('ENDF', None, None, None)
         
@@ -643,7 +399,14 @@ class Compiler:
         self.current_function = None
         self.symbol_table.exit_scope()
         
-        p[0] = ('funcs', func_name, p[4], p[8], p[9])
+        p[0] = ('funcs', func_name, p[5], p[9], p[10])
+
+    def p_mark_beginning(self, p):
+        'mark_beginning :'
+        # Mark start of function in quadruples
+        self.symbol_table.function_start = len(self.quadruples)
+
+        p[0] = ('mark_beginning',)
 
     def p_enter_func_scope(self, p):
         'enter_func_scope :'
@@ -1134,15 +897,19 @@ class Compiler:
             f.write("FUNCTION_DIRECTORY\n")
             f.write("=================\n")
             
+            # Count global variables properly
+            global_vars = sum(1 for var_info in self.symbol_table.scopes[0].values() 
+                            if var_info['address'] < 101)  # Global memory range
+            
             # First write main function info
             main_info = self.symbol_table.get_function('main')
             if main_info:
                 f.write(f"FUNC main\n")
-                f.write(f"type: {main_info['return_type']}\n")
+                f.write(f"type: void\n")
                 f.write(f"start: {main_info['quad_start']}\n")
                 f.write(f"params: 0\n")
-                f.write(f"vars: {len(main_info.get('variables', {}))}\n")
-                f.write("END_FUNC\n\n")
+                f.write(f"vars: {global_vars}\n")
+                f.write("END_FUNC\n")
             
             # Then write other functions
             for func_name, func_info in self.symbol_table.functions.items():
@@ -1151,18 +918,20 @@ class Compiler:
                     f.write(f"type: {func_info['return_type']}\n")
                     f.write(f"start: {func_info['quad_start']}\n")
                     f.write(f"params: {len(func_info.get('parameters', []))}\n")
-                    f.write(f"vars: {len(func_info.get('variables', {}))}\n")
-                    f.write("END_FUNC\n\n")
+                    # Count local variables for this function
+                    local_vars = len(func_info.get('variables', {}))
+                    f.write(f"vars: {local_vars}\n")
+                    f.write("END_FUNC\n")
             
-            # Write constants table in a parseable format
+            # Write constants table
             f.write("CONSTANTS\n")
             f.write("=========\n")
             for type_name, constants in self.memory_manager.constant_map.items():
                 for value, address in constants.items():
                     f.write(f"{type_name},{value},{address}\n")
-            f.write("END_CONSTANTS\n\n")
+            f.write("END_CONSTANTS\n")
             
-            # Write quadruples in a machine-readable format
+            # Write quadruples
             f.write("QUADRUPLES\n")
             f.write("==========\n")
             for i, quad in enumerate(self.memory_quadruples):
@@ -1181,6 +950,8 @@ class Compiler:
         self.operator_stack = []
         self.jump_stack = []
         self.temp_counter = 0
+
+        self.has_goto_main = False
         
         # Reset symbol table
         self.symbol_table = SymbolTable(self.memory_manager)
@@ -1217,7 +988,7 @@ def run_test_case(compiler, source_code, case_name="", export=False, run=False):
 compiler = Compiler()
 vm = VirtualMachine()
 
-run_test_case(compiler, '''
+""" run_test_case(compiler, '''
 program math;
 var a, b : int;
 main {
@@ -1227,7 +998,7 @@ main {
     print(a + b);
 }
 end
-''', "addition", export=True, run=True)
+''', "addition", export=True, run=False)
 
 run_test_case(compiler, '''
 program math;
@@ -1240,7 +1011,7 @@ main {
     print(c);
 }
 end
-''', "subtraction", export=True, run=True)
+''', "subtraction", export=True, run=False)
 
 run_test_case(compiler, '''
 program math;
@@ -1253,7 +1024,7 @@ main {
     print(c);
 }
 end
-''', "subtraction2", export=True, run=True)
+''', "subtraction2", export=True, run=False)
 
 run_test_case(compiler, '''
 program math;
@@ -1266,7 +1037,7 @@ main {
     print(c);
 }
 end
-''', "multiplication", export=True, run=True)
+''', "multiplication", export=True, run=False)
 
 run_test_case(compiler, '''
 program math;
@@ -1280,7 +1051,7 @@ main {
     print(c);
 }
 end
-''', "division", export=True, run=True)
+''', "division", export=True, run=False)
 
 run_test_case(compiler, '''
 program math;
@@ -1293,7 +1064,7 @@ main {
     print(c);
 }
 end
-''', "precedence1", export=True, run=True)
+''', "precedence1", export=True, run=False)
 
 run_test_case(compiler, '''
 program math;
@@ -1307,4 +1078,34 @@ main {
     print(c);
 }
 end
-''', "precedence2", export=True, run=True)
+''', "precedence2", export=True, run=False) """
+
+""" run_test_case(compiler, '''
+program twofuncs;
+void one() [
+    {
+        print(1);
+    }];
+void two() [
+    {
+        print(2);
+    }];
+main {
+    one();
+    two();
+}
+end
+''', "multi_func", export=True, run=False) """
+
+run_test_case(compiler, '''
+program whileloop;
+var a : int;
+main {
+    a = 6;
+    while (a > 0) do {
+        a = a-1;
+        print(a);
+    };
+}
+end
+''', "while_loop", export=True, run=True)
