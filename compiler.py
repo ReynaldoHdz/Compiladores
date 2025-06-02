@@ -805,8 +805,15 @@ class Compiler:
     # Action at the beginning of a while loop
     def p_while_start(self, p):
         'while_start :'
+         # Calculate target for the GOTOF (where else starts or where if ends)
+        target = len(self.quadruples)
+        
+        # ADJUSTMENT: Add 1 if we're inside a function (not main)
+        if self.current_function and self.current_function != 'main':
+            target += 1
+
         # Push current quad position to mark loop start
-        self.jump_stack.append(len(self.quadruples))
+        self.jump_stack.append(target)
         
         p[0] = ('while_start',)
 
@@ -842,8 +849,15 @@ class Compiler:
         # Generate jump back to loop start
         self.emit_quad('GOTO', None, None, start_position)
         
-        # Fill the false jump to point after the loop
-        self.fill_quad(false_jump, len(self.quadruples))
+         # Calculate target for the GOTOF (where else starts or where if ends)
+        target = len(self.quadruples)
+        
+        # ADJUSTMENT: Add 1 if we're inside a function (not main)
+        if self.current_function and self.current_function != 'main':
+            target += 1
+        
+        # Fill the false jump to point to else or after if
+        self.fill_quad(false_jump, target)
         
         p[0] = ('while_end',)
 

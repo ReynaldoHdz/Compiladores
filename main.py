@@ -3,7 +3,6 @@ from vm import VirtualMachine
 
 def run_test_case(compiler, source_code, case_name="", export=False, run=False, debug=False):
     print(f"\nTesting: {case_name}")
-    print(f"\n{source_code.strip()}")
     compiler.reset()
     vm.reset()
     
@@ -14,6 +13,7 @@ def run_test_case(compiler, source_code, case_name="", export=False, run=False, 
         compiler.compile(source_code)
        
         if debug:
+            print(f"\n{source_code.strip()}")
             print("\nStandard Quadruples:")
             for i, quad in enumerate(compiler.quadruples):
                 print(f"{i}: {quad}")
@@ -248,13 +248,48 @@ main {
 end
 ''', "recursion", export=True, run=True) """
 
-run_test_case(compiler, '''
-program returns;
-int adds_one(n : int) [{
-    return n+1;
-}];
+""" run_test_case(compiler, '''
+program fibonacci;
+void fibonacci(n : int) [
+    var a, b, count, temp : int;
+    {
+        a = 0;
+        b = 1;
+        count = 0;
+        temp = 0;
+              
+        while (count < n) do {
+            print(a);
+            temp = a;
+            a = b;
+            b = temp + b;
+            count = count + 1;
+        };
+    }
+];
 main {
-    print(adds_one(3));
+    fibonacci(5);
 }
 end
-''', "factorial", export=True, run=True)
+''', "fibonacci", export=True, run=True, debug=False) """
+
+run_test_case(compiler, '''
+program factorial;
+void factorial(n : int) [
+    var result, counter : int;
+    {
+        result = 1;
+        counter = n;
+        while (counter > 1) do {
+            result = result * counter;
+            counter = counter - 1;
+        };
+        
+        print(result);
+    }
+];
+main {
+    factorial(5);
+}
+end
+''', "factorial", export=True, run=True, debug=False)
