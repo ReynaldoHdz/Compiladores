@@ -136,18 +136,18 @@ run_test_case(compiler, '''
 program twofuncs;
 void one() [
     {
-        print(1);
+        print("one",1);
     }];
 void two() [
     {
-        print(2);
+        print("two",2);
     }];
 main {
     one();
     two();
 }
 end
-''', "multi_func", export=True, run=False)
+''', "multi_func", export=True, run=True, debug=False)
 
 run_test_case(compiler, '''
 program testwhile;
@@ -160,7 +160,7 @@ main {
     };
 }
 end
-''', "while_loop", export=True, run=False)
+''', "while_loop", export=True, run=True)
 
 run_test_case(compiler, '''
 program testif;
@@ -175,7 +175,7 @@ main {
     };
 }
 end
-''', "if_statement", export=True, run=False)
+''', "if_statement", export=True, run=True)
 
 run_test_case(compiler, '''
 program testifelse;
@@ -190,8 +190,7 @@ main {
     print("Back in main");
 }
 end
-''', "if_else", export=True, run=False)
-
+''', "if_else", export=True, run=True)
 
 """ run_test_case(compiler, '''
 program parameters;
@@ -220,7 +219,7 @@ main {
     add_subtract(a);
 }
 end
-''', "global_and_local", export=True, run=False)
+''', "global_and_local", export=True, run=True)
 
 run_test_case(compiler, '''
 program equivalence;
@@ -232,7 +231,7 @@ main {
     };
 }
 end
-''', "test_equivalence", export=True, run=False)
+''', "test_equivalence", export=True, run=True)
 
 run_test_case(compiler, '''
 program recursion;
@@ -248,7 +247,7 @@ main {
     countdown(5);
 }
 end
-''', "recursion", export=True, run=False)
+''', "recursion", export=True, run=True)
 
 run_test_case(compiler, '''
 program fibonacci;
@@ -273,7 +272,7 @@ main {
     fibonacci(5);
 }
 end
-''', "fibonacci", export=True, run=False, debug=False)
+''', "fibonacci", export=True, run=True, debug=False)
 
 run_test_case(compiler, '''
 program factorial;
